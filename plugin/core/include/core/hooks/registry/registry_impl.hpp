@@ -1,0 +1,421 @@
+#pragma once
+
+#include <cstddef>
+
+#include <algorithm>
+#include <array>
+#include <span>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+#include <mini/ini.h>
+
+#include "core/logger.hpp" // IWYU pragma: keep
+
+#include "core/diagnostics/crash_journal.hpp"
+#include "core/diagnostics/hook_context.hpp"
+#include "core/diagnostics/seh_guard.hpp"
+#include "core/hooks/registry/dep_list.hpp"
+#include "core/hooks/registry/hook_traits.hpp"
+#include "core/hooks/registry/parsers.hpp"
+// registry.hpp includes this file at its end; the cycle is intentional.
+#include "core/hooks/registry/registry.hpp" // NOLINT(misc-header-include-cycle)
+#include "core/hooks/registry/validate.hpp"
+
+namespace hooks {
+    namespace detail {
+        template<typename HookList>
+        struct RegistryOps {
+            template<typename... Tags>
+            static constexpr auto validate_all(hook_list<Tags...> /*unused*/) -> bool {
+                return (sizeof(validate_hook_deps<Tags, HookList>) && ...);
+            }
+
+            static_assert(validate_all(HookList {}));
+
+            template<typename Tag, typename... Tags>
+            static constexpr auto hook_idx_in(hook_list<Tags...> /*unused*/) -> std::size_t {
+                constexpr std::array matches = {std::is_same_v<Tag, Tags>...};
+                for (std::size_t i = 0; i < sizeof...(Tags); ++i) {
+                    if (matches.at(i)) {
+                        return i;
+                    }
+                }
+                return sizeof...(Tags);
+            }
+
+            template<typename Tag>
+            static constexpr std::size_t hook_idx = hook_idx_in<Tag>(HookList {});
+
+            template<typename Tag>
+            struct DepIndices {
+                static constexpr auto compute_hard() {
+                    return []<typename... Deps>(dep_list<Deps...>) -> auto {
+                        return std::array<std::size_t, sizeof...(Deps)> {hook_idx<Deps>...};
+                    }(typename HookTraits<Tag>::hard_deps {});
+                }
+                static constexpr auto compute_soft() {
+                    return []<typename... Deps>(dep_list<Deps...>) -> auto {
+                        return std::array<std::size_t, sizeof...(Deps)> {hook_idx<Deps>...};
+                    }(typename HookTraits<Tag>::soft_deps {});
+                }
+                static constexpr auto hard = compute_hard();
+                static constexpr auto soft = compute_soft();
+            };
+
+            template<typename... Tags>
+            static constexpr auto hook_list_size(hook_list<Tags...> /*unused*/) -> std::size_t {
+                return sizeof...(Tags);
+            }
+
+            static constexpr std::size_t N = hook_list_size(HookList {});
+
+            template<typename... Tags>
+            static constexpr auto build_hard_deps(hook_list<Tags...> /*unused*/) {
+                return std::array<std::span<const std::size_t>, sizeof...(Tags)> {
+                    DepIndices<Tags>::hard...};
+            }
+
+            template<typename... Tags>
+            static constexpr auto build_soft_deps(hook_list<Tags...> /*unused*/) {
+                return std::array<std::span<const std::size_t>, sizeof...(Tags)> {
+                    DepIndices<Tags>::soft...};
+            }
+
+            static constexpr auto topo_sort()
+                -> std::pair<std::array<std::size_t, N>, std::size_t> {
+                auto hard = build_hard_deps(HookList {});
+                auto soft = build_soft_deps(HookList {});
+
+                std::array<std::size_t, N>                in_degree {};
+                std::array<std::array<std::size_t, N>, N> adj {};
+                std::array<std::size_t, N>                adj_count {};
+
+                for (std::size_t i = 0; i < N; ++i) {
+                    for (auto dep : hard.at(i)) {
+                        adj.at(dep).at(adj_count.at(dep)++) = i;
+                        in_degree.at(i)++;
+                    }
+                    for (auto dep : soft.at(i)) {
+                        adj.at(dep).at(adj_count.at(dep)++) = i;
+                        in_degree.at(i)++;
+                    }
+                }
+
+                std::array<std::size_t, N> queue {};
+                std::size_t                front = 0;
+                std::size_t                back  = 0;
+
+                for (std::size_t i = 0; i < N; ++i) {
+                    if (in_degree.at(i) == 0) {
+                        queue.at(back++) = i;
+                    }
+                }
+
+                std::array<std::size_t, N> order {};
+                std::size_t                count = 0;
+
+                while (front < back) {
+                    auto u            = queue.at(front++);
+                    order.at(count++) = u;
+                    for (std::size_t i = 0; i < adj_count.at(u); ++i) {
+                        auto v = adj.at(u).at(i);
+                        if (--in_degree.at(v) == 0) {
+                            queue.at(back++) = v;
+                        }
+                    }
+                }
+
+                return {order, count};
+            }
+
+            static constexpr auto sorted_result = topo_sort();
+            static_assert(sorted_result.second == N, "Dependency cycle detected in hook graph");
+            static constexpr auto install_order = sorted_result.first;
+
+            struct HookOps {
+                std::string_view             name;
+                std::size_t                  index {};
+                std::span<const std::size_t> hard_deps;
+                std::span<const std::size_t> soft_deps;
+
+                void (*load_config)(Registry<HookList> &r, mINI::INIStructure &ini) {};
+                void (*load_enabled)(Registry<HookList> &r, mINI::INIStructure &ini) {};
+                bool (*check_required_fn)(const void *addrs) {};
+                void (*report_optional_fn)(const void *addrs, std::string_view hook_name) {};
+                bool (*do_install_fn)(const void *addrs) {};
+                void (*set_installed)(Registry<HookList> &r, bool val) {};
+                void (*set_enabled)(Registry<HookList> &r, bool val) {};
+                bool (*is_enabled)(const Registry<HookList> &r) {};
+                bool (*is_installed)(const Registry<HookList> &r) {};
+                void (*call_on_reload)(Registry<HookList> &r) {};
+            };
+
+            // Resolves a pattern member pointer back to the signature name the
+            // scan used, so a missing optional can be reported as something the
+            // user can grep for in the log rather than an opaque field.
+            template<typename Data>
+            static auto pattern_name(auto field) -> std::string_view {
+                for (const auto &entry : Data::scan_entries) {
+                    if (entry.field == field) {
+                        return entry.name;
+                    }
+                }
+                return "<unscanned>";
+            }
+
+            template<typename Tag, typename Data = void>
+            static auto make_ops() -> HookOps {
+                return HookOps {
+                    .name      = HookTraits<Tag>::name,
+                    .index     = hook_idx<Tag>,
+                    .hard_deps = DepIndices<Tag>::hard,
+                    .soft_deps = DepIndices<Tag>::soft,
+
+                    .load_config = [](Registry<HookList> &r, mINI::INIStructure &ini) -> void {
+                        r.template config<Tag>().load_all(ini);
+                    },
+                    // Hooks default to enabled, so an absent [Hooks] section or a
+                    // deleted key restores that rather than freezing the value the
+                    // key had before it was removed.
+                    .load_enabled = [](Registry<HookList> &r, mINI::INIStructure &ini) -> void {
+                        const std::string key(HookTraits<Tag>::name);
+                        const auto        hooks = ini.get("Hooks");
+                        if (hooks.has(key)) {
+                            r.template set_enabled<Tag>(default_parser<bool> {}(hooks.get(key)));
+                            return;
+                        }
+                        r.template set_enabled<Tag>(true);
+                    },
+
+                    .check_required_fn = []() -> bool (*)(const void *) {
+                        if constexpr (!std::is_void_v<Data>) {
+                            return +[](const void *raw) -> bool {
+                                const auto &addrs =
+                                    *static_cast<const Data::ResolvedAddresses *>(raw);
+                                return std::ranges::all_of(HookTraits<Tag>::required_patterns,
+                                                           [&](auto f) -> bool {
+                                                               return (addrs.*f).has_value();
+                                                           });
+                            };
+                        } else {
+                            return static_cast<bool (*)(const void *)>(nullptr);
+                        }
+                    }(),
+
+                    // An optional pattern that did not resolve is not a failure, but
+                    // it does mean the hook installed with part of its behaviour
+                    // absent. Saying so is the difference between a feature the user
+                    // knows is unavailable and one that looks broken.
+                    .report_optional_fn = []() -> void (*)(const void *, std::string_view) {
+                        if constexpr (!std::is_void_v<Data>) {
+                            return +[](const void *raw, std::string_view hook_name) -> void {
+                                const auto &addrs =
+                                    *static_cast<const Data::ResolvedAddresses *>(raw);
+                                for (auto f : HookTraits<Tag>::optional_patterns) {
+                                    if (!(addrs.*f).has_value()) {
+                                        log::get()->warn(
+                                            "Hook '{}': optional pattern '{}' not found, "
+                                            "part of this hook is inactive",
+                                            hook_name,
+                                            pattern_name<Data>(f));
+                                    }
+                                }
+                            };
+                        } else {
+                            return static_cast<void (*)(const void *, std::string_view)>(nullptr);
+                        }
+                    }(),
+
+                    .do_install_fn = []() -> bool (*)(const void *) {
+                        if constexpr (!std::is_void_v<Data>) {
+                            return +[](const void *raw) -> bool {
+                                const auto &addrs =
+                                    *static_cast<const Data::ResolvedAddresses *>(raw);
+                                return HookTraits<Tag>::install(addrs);
+                            };
+                        } else {
+                            return static_cast<bool (*)(const void *)>(nullptr);
+                        }
+                    }(),
+
+                    .set_installed = [](Registry<HookList> &r, bool val) -> void {
+                        r.template set_installed<Tag>(val);
+                    },
+                    .set_enabled = [](Registry<HookList> &r, bool val) -> void {
+                        r.template set_enabled<Tag>(val);
+                    },
+                    .is_enabled = [](const Registry<HookList> &r) -> bool {
+                        return r.template enabled<Tag>();
+                    },
+                    .is_installed = [](const Registry<HookList> &r) -> bool {
+                        return r.template installed<Tag>();
+                    },
+                    .call_on_reload = [](Registry<HookList> &r) -> void {
+                        if constexpr (HasOnReload<Tag>) {
+                            HookTraits<Tag>::on_reload(r.template config<Tag>());
+                        }
+                    },
+                };
+            }
+
+            template<typename Data = void, typename... Tags>
+            static auto make_all_ops(hook_list<Tags...> /*unused*/)
+                -> std::array<HookOps, sizeof...(Tags)> {
+                return {make_ops<Tags, Data>()...};
+            }
+
+            static void apply_enabled_flags(Registry<HookList>           &reg,
+                                            const std::array<HookOps, N> &ops,
+                                            mINI::INIStructure           &ini) {
+                for (const auto &op : ops) {
+                    op.load_enabled(reg, ini);
+                }
+                std::array<bool, N> enabled_flags {};
+                for (std::size_t i = 0; i < N; ++i) {
+                    enabled_flags.at(i) = ops.at(i).is_enabled(reg);
+                }
+                cascade_disable(ops, enabled_flags);
+                for (std::size_t i = 0; i < N; ++i) {
+                    ops.at(i).set_enabled(reg, enabled_flags.at(i));
+                }
+            }
+
+            // The first hard dependency of `op` that did not end up installed, or
+            // null when every one of them did.
+            static auto first_unmet_hard_dep(const Registry<HookList>     &reg,
+                                             const std::array<HookOps, N> &ops,
+                                             const HookOps                &op) -> const HookOps                *{
+                for (auto dep : op.hard_deps) {
+                    if (!ops.at(dep).is_installed(reg)) {
+                        return &ops.at(dep);
+                    }
+                }
+                return nullptr;
+            }
+
+            static void
+                cascade_disable(const std::array<HookOps, N> &ops, std::array<bool, N> &enabled) {
+                bool changed = true;
+                while (changed) {
+                    changed = false;
+                    for (std::size_t i = 0; i < N; ++i) {
+                        if (!enabled.at(i)) {
+                            continue;
+                        }
+                        for (auto dep : ops.at(i).hard_deps) {
+                            if (!enabled.at(dep)) {
+                                log::get()->info(
+                                    "Hook '{}': disabled (hard dependency '{}' is disabled)",
+                                    ops.at(i).name,
+                                    ops.at(dep).name);
+                                enabled.at(i) = false;
+                                changed       = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    } // namespace detail
+
+    template<typename HookList>
+    template<typename Data>
+    void Registry<HookList>::install_all(const Data::ResolvedAddresses &addrs,
+                                         mINI::INIStructure            &ini) {
+        using Ops = detail::RegistryOps<HookList>;
+
+        static const auto ops = Ops::template make_all_ops<Data>(HookList {});
+
+        log::get()->trace("install_all: loading configs");
+        for (const auto &op : ops) {
+            op.load_config(*this, ini);
+        }
+
+        log::get()->trace("install_all: loading enabled flags");
+        Ops::apply_enabled_flags(*this, ops, ini);
+
+        log::get()->trace("install_all: installing in dependency order");
+
+        int installed_count = 0;
+        int enabled_count   = 0;
+        for (auto idx : Ops::install_order) {
+            const auto &op = ops.at(idx);
+
+            if (!op.is_enabled(*this)) {
+                log::get()->info("Hook '{}': disabled", op.name);
+                continue;
+            }
+            ++enabled_count;
+
+            // The install order is topological, so a hard dependency has already
+            // had its turn by now. cascade_disable only propagates config-driven
+            // disables; a dependency whose patterns were missing or whose install
+            // failed leaves dependents to run against state nothing maintains.
+            if (const auto *unmet = Ops::first_unmet_hard_dep(*this, ops, op)) {
+                log::get()->warn("Hook '{}': skipped (hard dependency '{}' is not installed)",
+                                 op.name,
+                                 unmet->name);
+                op.set_enabled(*this, false);
+                continue;
+            }
+
+            if (!op.check_required_fn(&addrs)) {
+                log::get()->warn("Hook '{}': missing required patterns, skipping", op.name);
+                op.set_enabled(*this, false);
+                continue;
+            }
+
+            diagnostics::set_current_hook_name(op.name);
+            if (diagnostics::guarded_install(op.do_install_fn, &addrs, op.name)) {
+                op.set_installed(*this, true);
+                log::get()->info("Hook '{}': installed", op.name);
+                op.report_optional_fn(&addrs, op.name);
+                diagnostics::crash_journal::write_hook_installed(op.name);
+                ++installed_count;
+            } else {
+                log::get()->warn("Hook '{}': install failed", op.name);
+                op.set_enabled(*this, false);
+            }
+            diagnostics::set_current_hook_name({});
+        }
+
+        log::get()->info("Initialization complete: {}/{} enabled hooks installed ({} total)",
+                         installed_count,
+                         enabled_count,
+                         Ops::N);
+    }
+
+    template<typename HookList>
+    void Registry<HookList>::reload(mINI::INIStructure &ini) {
+        using Ops = detail::RegistryOps<HookList>;
+
+        static const auto ops = Ops::make_all_ops(HookList {});
+
+        log::get()->info("Config reload...");
+
+        for (const auto &op : ops) {
+            op.load_config(*this, ini);
+        }
+        log::get()->trace("reload: configs loaded");
+
+        Ops::apply_enabled_flags(*this, ops, ini);
+
+        // on_reload runs on the watcher thread, where the hook-name context is
+        // unset, so any byte it patches would go unrecorded in the patch registry
+        // and a later fault there would be reported as unattributed.
+        for (const auto &op : ops) {
+            if (op.is_installed(*this) && op.is_enabled(*this)) {
+                log::get()->trace("reload: calling on_reload for '{}'", op.name);
+                diagnostics::set_current_hook_name(op.name);
+                op.call_on_reload(*this);
+                diagnostics::set_current_hook_name({});
+            }
+        }
+
+        log::get()->info("Config reloaded");
+    }
+} // namespace hooks

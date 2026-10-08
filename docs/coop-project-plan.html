@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assassin's Creed Co-op — Project Plan &amp; Progress</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel2: #1c2230;
+    --line: #2a3240;
+    --text: #e6edf3;
+    --muted: #8b98a9;
+    --done: #2ea043;
+    --active: #d29922;
+    --blocked: #f85149;
+    --todo: #30363d;
+    --accent: #58a6ff;
+    --purple: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 80px;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -.3px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .legend { margin: 14px 0 28px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend b { color: var(--text); font-weight: 600; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  h2 { font-size: 17px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 14px; margin: 22px 0 8px; color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .card h4 { margin: 0 0 2px; font-size: 15px; }
+  .card .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .card p { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+  .bar { height: 8px; background: #0b0e13; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > i { display: block; height: 100%; border-radius: 5px; }
+  .b-done { background: linear-gradient(90deg,#2ea043,#3fb950); }
+  .b-active { background: linear-gradient(90deg,#bb8009,#d29922); }
+  .b-blocked { background: linear-gradient(90deg,#a42c26,#f85149); }
+  .barrow { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .s-done    { background: rgba(46,160,67,.15);  color: #3fb950; border: 1px solid rgba(46,160,67,.4); }
+  .s-active  { background: rgba(210,153,34,.15); color: #e3b341; border: 1px solid rgba(210,153,34,.4); }
+  .s-blocked { background: rgba(248,81,73,.13);  color: #ff7b72; border: 1px solid rgba(248,81,73,.4); }
+  .s-todo    { background: rgba(139,152,169,.12);color: #8b98a9; border: 1px solid rgba(139,152,169,.35); }
+  .gate { outline: 1px solid rgba(248,81,73,.45); }
+  .gate td:first-child::before { content: "▲ "; color: var(--blocked); }
+  .tl { border-left: 2px solid var(--line); margin: 14px 0 0 8px; padding-left: 22px; }
+  .tl .ev { position: relative; padding: 0 0 20px; }
+  .tl .ev::before { content: ""; position: absolute; left: -29px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--panel2); border: 2px solid var(--accent); }
+  .tl .ev.d::before { border-color: var(--done); }
+  .tl .ev.b::before { border-color: var(--blocked); }
+  .tl .when { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .tl .what { margin-top: 2px; }
+  .tl .what b { color: var(--text); }
+  .tl .what span { color: var(--muted); }
+  ul.tight { margin: 8px 0 0; padding-left: 20px; }
+  ul.tight li { margin: 3px 0; }
+  code { background: #0b0e13; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12px; color: #79c0ff; }
+  .note { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--purple); border-radius: 6px; padding: 12px 16px; margin-top: 14px; color: var(--muted); font-size: 13px; }
+  .note b { color: var(--text); }
+  .kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin: 18px 0 0; }
+  .kpi div { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .kpi .n { font-size: 20px; font-weight: 700; }
+  .kpi .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Assassin's Creed Co-op — Project Plan &amp; Progress</h1>
+  <div class="sub">Living tracker · goal: <b>two players, one shared Caribbean — parkour in Havana, sail the sea</b> · <b style="color:var(--purple)">end goal: full campaign co-op</b> · LAN via Radmin VPN · last updated 2026-10-08 · <b style="color:var(--done)">ghost LIVE · despawn-proof body (360 m, zero switches) · Duncan look (mod7) · COMBAT UNLOCKED: NPC HP read+write, engine-native kill proven, death signature captured</b> · <b style="color:var(--active)">next: damage relay (P4)</b></div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--done)"></i><b>Done</b> verified</span>
+    <span><i class="dot" style="background:var(--active)"></i><b>Active</b> / code-complete</span>
+    <span><i class="dot" style="background:var(--blocked)"></i><b>Blocked</b> / disproven route</span>
+    <span><i class="dot" style="background:var(--todo)"></i><b>Not started</b></span>
+  </div>
+</header>
+
+<h2>At a glance</h2>
+<div class="kpi">
+  <div><div class="n" style="color:var(--accent)">BFCoop</div><div class="l">Active project</div></div>
+  <div><div class="n" style="color:var(--done)">P1 ✔ P2 ✔</div><div class="l">Body pinned · look live</div></div>
+  <div><div class="n" style="color:var(--done)">HP ✔</div><div class="l">Read · write · kill</div></div>
+  <div><div class="n" style="color:var(--done)">pin v2</div><div class="l">360 m, 0 switches</div></div>
+</div>
+
+<div class="cards" style="margin-top:16px">
+
+  <div class="card">
+    <div class="kind">Project 1 · active</div>
+    <h4>BFCoop — Black Flag single-player co-op</h4>
+    <p><b style="color:var(--done)">Two-machine link live + all systems mapped.</b> Transform sync works (both players saw each other's ghost over Radmin, facing confirmed). The full spawn system is decoded; all game data extracted (~90k files); the mod reimport pipeline is proven. <b style="color:var(--done)">The haunting is fixed</b> — a private-vtable despawn pin holds the partner body across the whole map (360 m cross-map journey, zero switches), and mod7 gives the partner <b>Duncan Walpole robes</b> (def-swap on crew &amp; sailors, live). Today: <b style="color:var(--done)">combat internals cracked</b> — NPC HP read+write, engine-honored kills, death signature captured. Ladder now: <b>P3 parkour animations → P4 host-authoritative damage/kill relay → P5 ships</b>. Runtime entity creation = closed (engine constraint); true hosted world = out of scope (no netcode) — host-authoritative two instances is the frame.<br><br><b>End goal (user): the real thing</b> — full campaign co-op across cities, sea and missions (C-ladder below).</p>
+    <div class="bar"><i class="b-active" style="width:85%"></i></div>
+    <div class="barrow"><span>link ✔ body ✔ look ✔ combat internals ✔ · relay + animations next</span><span>85%</span></div>
+  </div>
+
+  <div class="card">
+    <div class="kind">Project 2 · paused</div>
+    <h4>AccCoop — AC Rogue co-op</h4>
+    <p>Transform + transport proven in-game; the remote-avatar gate was never cracked (Rogue has no MP binary to copy). Kept as the reference for method + dead ends.</p>
+    <div class="bar"><i class="b-blocked" style="width:45%"></i></div>
+    <div class="barrow"><span>S1 data layer done · avatar blocked</span><span>45%</span></div>
+  </div>
+
+  <div class="card">
+    <div class="kind">Support · done</div>
+    <h4>Tooling, research &amp; knowledge base</h4>
+    <p>AC modding-ecosystem survey; five OpenCode skills; three field-note PRs; Ghidra projects for Rogue, BF MP and BF SP; x86 port of the patch framework.</p>
+    <div class="bar"><i class="b-done" style="width:100%"></i></div>
+    <div class="barrow"><span>Delivered</span><span>100%</span></div>
+  </div>
+
+</div>
+
+<h2>BFCoop — phases</h2>
+<table>
+  <thead><tr><th style="width:52px">#</th><th>Deliverable</th><th style="width:130px">Status</th><th style="width:26%">Oracle (how we know)</th><th style="width:30%">Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>B0</b></td>
+      <td>Recon: exe pinned, analysed, anchors mapped</td>
+      <td><span class="badge s-done">Done</span></td>
+      <td>Anchors + camera manager found in the decompile</td>
+      <td><code>AC4BFSP.exe</code> MD5 <code>20583428…A65BC35</code>; <code>Ai::UpdateCamera</code> <code>0x63bbb0</code>; camera manager <code>0x02abe588</code>; counter <code>+0x130</code>, pos ring <code>+0x90</code>, quat ring <code>+0xE0</code></td>
+    </tr>
+    <tr>
+      <td><b>B1</b></td>
+      <td>Read the local player transform each frame</td>
+      <td><span class="badge s-done">Verified</span></td>
+      <td>In-game values track walking</td>
+      <td><b>Confirmed 2026-10-06:</b> the plugin loaded into <code>AC4BFSP.exe</code> and read a live transform — <code>pos=(1.3,7.1,1.3) quat=(0,0,0.913,0.409)</code>, a valid unit quaternion. In-world "tracks walking" is the final check.</td>
+    </tr>
+    <tr>
+      <td><b>B2</b></td>
+      <td>Two clients exchange positions over Radmin</td>
+      <td><span class="badge s-done">Verified (two machines)</span></td>
+      <td>Both players saw each other's ghost in-game; logs <code>peer=1 fresh=1</code></td>
+      <td><b>2026-10-06:</b> the plugin exchanged samples with a scripted fake peer over UDP — <b>2,839 packets sent / 2,839 received</b>, plugin log <code>peer=1</code>. Then the real thing: <b>two machines over Radmin VPN — LIVE</b> (peer=1 <code>fresh=1</code>, ghost body <code>0x3784D1B0</code> driven 13–19 m from the peer, both players saw each other's crowd-body ghost in-game). Gotcha: either PC can leave a dead "ghost" UDP endpoint after a crashed session (<code>bind … 10048</code>) — change <code>LocalPort</code> on that side, mirror <code>RemotePort</code> on the other; hot reload applies it live.</td>
+    </tr>
+    <tr>
+      <td><b>B3</b></td>
+      <td><b>A visible, drivable second character</b></td>
+      <td><span class="badge s-done">Live on two machines</span></td>
+      <td>Both players saw the driven body in-game and it turned to match its owner</td>
+      <td><b>The gate — cracked 2026-10-06.</b> Chain: find the character's world-transform node (class vtable <code>0x01E4CE90</code>, marker <code>+0x68</code>, <code>f7c(+0x7C)==-0.50</code>, children <code>+0x66 ≥ 16</code>; matrix translation <code>+0x40</code> = feet) → write it per frame from the peer's position → engine renders the character there. Writing it <b>teleports Edward</b> (user-confirmed). Inactive proxies (children 8–14) never render — real crowd bodies have 18–19 children and are pulled in from up to ~200 m. Released back to their own AI when packets stop. <b>Two-machine (2026-10-06):</b> <code>fresh=1</code>, body picked 61.5 m from the peer and driven 13–19 m as he walked; facing confirmed live ("he turns to match"). <b>2026-10-08:</b> the despawn problem is solved — a private-vtable pin (v2) keeps the body alive across streaming (a ~360 m cross-map journey ran with <b>zero switches</b>). Known gap: water still forces a body loss (engine recycle path bypasses the pin) — shore-wait behaviour planned.</td>
+    </tr>
+    <tr>
+      <td><b>B3.5</b></td><td>Partner look — a real character, not a crowd body</td><td><span class="badge s-done">Solved (mod7)</span></td><td>the partner renders in distinguishing attire</td><td><b>Def-swap pipeline (2026-10-08):</b> the forge TOC is redirected to a private EOF copy of a source def, with the copy's self-identity hash dwords patched to the target — crew &amp; sailors now render as <b>Duncan Walpole robes</b> (mod7 deployed; verified live: the partner picked at the ship <b>is Duncan</b>). Docks crowds have no swapped variants (picker bias toward crew/sailor bodies is the fallback). Old field-poke family stays exhausted (0x100-byte puppet anatomy; MP-only skin route — MODLOG).</td>
+    </tr>
+    <tr>
+      <td><b>B4</b></td>
+      <td>Parkour / animation-state sync</td>
+      <td><span class="badge s-active">Read side done</span></td>
+      <td>Ghost animates walking; climbs stop teleporting</td>
+      <td><b>Read side solved 2026-10-06:</b> the action state = the <b>BhvAssassin</b> behavior (live fields <code>+0x8D4/+0x8D8/+0x8E0</code>, request slots <code>[owner+0x2F50…]</code>; writer <code>FUN_01ab52c0</code>, machine <code>FUN_01ac1ad0</code> — caught with a hardware write-watchpoint). Plugin publishes the packed <code>anim_state</code> + logs <code>act=</code>. <b>Play side = Project B</b> (a civ rig cannot vault — the ghost must be an assassin-class body).</td>
+    </tr>
+    <tr>
+      <td><b>B5</b></td>
+      <td>Havana tandem-parkour test</td>
+      <td><span class="badge s-todo">Not started</span></td>
+      <td>Recording looks right</td>
+      <td>Requires B3 + B4 play side (Project B).</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Project B — the sustained partner body (was: assassin-body spawn)</h2>
+<table>
+  <thead><tr><th style="width:52px">#</th><th>Deliverable</th><th style="width:110px">Status</th><th style="width:26%">Oracle</th><th style="width:30%">Notes</th></tr></thead>
+  <tbody>
+    <tr><td><b>B1</b></td><td>Spawn recipe: who creates character nodes and how</td><td><span class="badge s-done">Done</span></td><td>the SpawnProbe census</td><td><b>Done 2026-10-06, completed 2026-10-07:</b> 4 creation paths + the full spawn system (classes = CRC32 names; mass creator + key system + keyed registration; 580-call engine census). All in RE-NOTES CURRENT TRUTH.</td></tr>
+    <tr><td><b>B2</b></td><td>Runtime creation of a character body</td><td><span class="badge s-blocked">CLOSED — engine constraint</span></td><td>—</td><td>The engine creates characters only at world load; mid-game creation chokes the renderer (audio-continues freezes; ~6 approaches). Do not retry.</td></tr>
+    <tr><td><b>B3 / P1</b></td><td><b>Sustained partner body — despawn pin</b></td><td><span class="badge s-done">Solved (pin v2)</span></td><td>a fixed body that never despawns, driven forever</td><td><b>Done 2026-10-08:</b> the body's vtable is swapped to a private 64-slot copy with a stub at <code>+0x400</code> — the engine's recycle path is blocked at slot 0 (v1 crash RCA'd: zeroed slots → call-to-null). <b>Proven: a ~360 m cross-map journey with zero body switches.</b> Known gaps: water still forces a loss — shore-wait planned; the picker can adopt sitting NPCs (stance filter todo).</td></tr>
+    <tr><td><b>B4 / P3</b></td><td>Parkour animations on the partner body (play side)</td><td><span class="badge s-todo">Planned</span></td><td>both vault the same wall, the ghost animates</td><td>Read side done; play side = command the ghost's behavior (BhvGenericNPC 0x026E2820, same request-slot pattern expected) or discrete action events per the BF MP scheme.</td></tr>
+    <tr><td><b>B5 / P2</b></td><td>Partner look + HUD marker</td><td><span class="badge s-active">Look ✔ · marker todo</span></td><td>the partner = a distinctive character with a floating tag</td><td><b>Look solved via def-swap (mod7): Duncan Walpole robes on crew/sailors</b> (see B3.5). Marker still todo — D3D overlay + world→screen projection using the transform data we already read per frame.</td></tr>
+    <tr><td><b>— / P4-P5</b></td><td>Damage/kill relay (host-authoritative) + ships</td><td><span class="badge s-active">Foundations proven</span></td><td>A kills a guard, B sees it drop; both sail together</td><td><b>2026-10-08 — the combat loop is proven live:</b> exact NPC HP is read/write per guard (LIFE u16 <code>+0x5C</code>, MAX <code>+0x5E</code>); a written value is honored by the engine (set 1 HP → one hit → engine-native death, watched); the universal death signature is captured (HP→65535, flag bit <code>0x01000000</code>); damage is explicit per attack (pistol 17, chip 1, counters = instant kill). Next: DamageProbe + TX/RX relay wiring in the plugin, then player health + respawn, ships last.</td></tr>
+  </tbody>
+</table>
+
+<h2>Co-op core - the road to full campaign co-op (C-ladder)</h2>
+<p style="color:var(--muted);font-size:13px;margin:6px 0 0">The P-ladder above (persistent body → look+marker → parkour → kills → ships) is the active road and the user-facing acceptance. The C-phases are the long-term breadth — framed correctly as <b>host-authoritative two instances</b> (a true hosted world = out of scope: the SP engine has no netcode). B4/B5 are the first slices of C2/C3.</p>
+<table>
+  <thead><tr><th style="width:52px">#</th><th>Deliverable</th><th style="width:110px">Status</th><th style="width:32%">Oracle</th></tr></thead>
+  <tbody>
+    <tr><td><b>C1</b></td><td>Session &amp; identity — handshake with version + save fingerprint, stable player identity, reconnect</td><td><span class="badge s-todo">Planned</span></td><td>both logs show the same identity across a rejoin</td></tr>
+    <tr><td><b>C2</b></td><td>Character replication v2 — locomotion state + parkour as custom-action enter/exit events; remote animation linkage</td><td><span class="badge s-todo">Planned</span></td><td>both vault/climb the same wall in sync (=B4)</td></tr>
+    <tr><td><b>C3</b></td><td>Ship replication — the partner's ship hull + basic state driven on the shared sea</td><td><span class="badge s-todo">Planned</span></td><td>both sail together; his ship moves as he steers</td></tr>
+    <tr><td><b>C4</b></td><td>Interest &amp; world objects — bounded replication of nearby ships/items/quest objects (MP relevant/irrelevant pattern)</td><td><span class="badge s-todo">Planned</span></td><td>same ship boarded by both; same chest state</td></tr>
+    <tr><td><b>C5</b></td><td>Shared-event authority — ownership rules (local for bodies/ships; host or symmetric for contested combat/AI) + reconciliation</td><td><span class="badge s-active">Foundation proven</span></td><td>both see the same kill / boarding outcome (NPC HP read+write+kill proven 2026-10-08)</td></tr>
+    <tr><td><b>C6</b></td><td>Mission &amp; progress sync — mission phase tracking + save policy (host-save as session truth; resume from checkpoint on desync)</td><td><span class="badge s-todo">Planned</span></td><td>both complete a mission step; can resume together after quitting</td></tr>
+    <tr><td><b>C7</b></td><td>Seamless transitions &amp; polish — city↔sea, out-of-map handling, desync repair, performance budget</td><td><span class="badge s-todo">Planned</span></td><td>an evening across sea + city + a mission with no restarts</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <b>The one binary question — answered YES.</b> We can obtain a visible, drivable character in <code>AC4BFSP.exe</code>: pick a real crowd body and write its world-transform node each frame from the peer's coordinates. Everything else is wiring, looks and tuning.
+</div>
+
+<h2>AccCoop — AC Rogue phases (reference)</h2>
+<table>
+  <thead><tr><th style="width:52px">#</th><th>Deliverable</th><th style="width:130px">Status</th><th>Evidence / notes</th></tr></thead>
+  <tbody>
+    <tr><td><b>A1</b></td><td>Player body transform read</td><td><span class="badge s-done">Done</span></td><td>Verified in-game: <code>BODY=(1049.0,424.6,19.0)</code> tracking walk + climb.</td></tr>
+    <tr><td><b>A2/A3</b></td><td>Transport + interpolation</td><td><span class="badge s-done">Done</span></td><td>Offline rig on a real capture: jerk 43.3 → 6.6 (<b>6.5× smoother</b>); robust under 10% loss + jitter.</td></tr>
+    <tr><td><b>M3</b></td><td>UDP loopback plumbing</td><td><span class="badge s-done">Done</span></td><td>3,847 packets in one session, smooth per-frame deltas.</td></tr>
+    <tr class="gate"><td><b>A4</b></td><td>Remote avatar</td><td><span class="badge s-blocked">Blocked</span></td><td>Four routes disproven — see “Dead ends” below.</td></tr>
+    <tr><td><b>S2</b></td><td>Event sync (mirrored kills)</td><td><span class="badge s-todo">Not started</span></td><td>Needs A4 + cross-machine entity identity (64-bit id lead exists).</td></tr>
+    <tr><td><b>S3</b></td><td>NPC correction</td><td><span class="badge s-todo">Not started</span></td><td>Needs A4 + AI-freeze.</td></tr>
+    <tr><td><b>S4/S5</b></td><td>Ships / world objectives</td><td><span class="badge s-todo">Not started</span></td><td>Long tail.</td></tr>
+  </tbody>
+</table>
+
+<h3>Dead ends — disproven, do not re-chase</h3>
+<ul class="tight">
+  <li><b>Debug-cheat spawn</b> (“Spawn Follow/RedBall/Still/Fight Dude”) — creates transient markers the manager deletes each frame; never renders a body.</li>
+  <li><b>Hijack an NPC by position</b> — <code>actor+0x800</code> is the ghost/teleport saved-position slot, not the live transform.</li>
+  <li><b>Set-transform on the player object</b> — <code>player+0x20</code> is floats, not a component. (Crash was isolated; game survived.)</li>
+  <li><b>Set-transform on an AI actor</b> — <code>actor+0x20</code> is a small integer (<code>0x11896</code>), not a component.</li>
+  <li><b>Near-player component scan</b> — only a constant-data component (<code>vt=0x142397720</code>) found; no transform.</li>
+  <li><b>Copying AC Unity's co-op into BF</b> — different engine generation (AnvilNext 2.0 vs AnvilNext) and architecture (x64 vs x86); the right oracle is BF's own MP exe.</li>
+</ul>
+
+<h2>Timeline</h2>
+<div class="tl">
+  <div class="ev d">
+    <div class="when">2026-10-08 (night) · BFCoop · COMBAT UNLOCKED</div>
+    <div class="what"><b>NPC health is read, written, and killed through the engine — the combat core is solved.</b> <span>Class ids verified as <b>CRC32(name)</b>; a runtime class resolver names any object from its vtable (3,246 vtables mapped). Guard health: <b>LIFE u16 @ +0x5C</b>, MAX @ +0x5E, flags @ +0x60. Live: three sword hits 36→33; <b>we wrote HP 33→1 and the player's next hit killed him — engine-native</b>; the universal death signature (HP→65535 + flag bit 0x01000000) was caught on three guards. Damage is explicit per attack: pistol 17, light sword 1, counters = instant kill flip. Damage notifications to the AI flow through the engine messenger (FUN_009f6210/6230 → AbstractEntityAI). Next: DamageProbe + relay wiring (P4).</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-08 · BFCoop · body pinned · Duncan look · PS3 gold build</div>
+    <div class="what"><b>The haunting is fixed and the partner got his robes.</b> <span>Despawn <b>pin v2</b>: private 64-slot vtable + slot-0 stub — proven over a ~360 m cross-map journey, zero switches (v1 crash RCA'd: zeroed slots → call to null). <b>Def-swap pipeline</b>: forge TOC → private EOF copy with patched self-identity hashes — crew &amp; sailors render as <b>Duncan Walpole robes</b> (mod7 deployed). Bonus: the PS3 submission build (full DWARF + 467k symbols) unlocked as reference — 284k types / 422k function signatures extracted; health/combat/anim families mapped. Staged plugin build (all review fixes + path replay + StateProbe) deployed and booted clean.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-08 · BFCoop · NETCODE + full-RE corpus</div>
+    <div class="what"><b>C1 session + event channel are code-complete, built and shipped in kit v0.3 — and the full-RE corpus is decompiling.</b> <span><b>Netcode:</b> Hello/Welcome handshake (host role, session id, 5 s timeout re-handshake, guest 5 s re-hello), reliable-ish event channel (250 ms resend ×8, cumulative ack via <code>PlayerPayload.ack_seq</code>, dedupe by <code>event_id</code>), <code>PlayerName</code>/<code>IsHost</code> config; received events logged in-game for testing; fake peer upgraded (<code>tools/fake_peer_session.ps1</code> — host/guest modes, event + ack checks). <b>RE:</b> mass decompile of <code>AC4BFSP.exe</code> (135,105 functions → resumable C batches; MP exe queued) + <code>gamedb</code> installed — instant function/string/call-graph queries once indexed ("RE all of Black Flag").</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-04 · AccCoop</div>
+    <div class="what"><b>Rogue co-op recon, plan, and first two milestones.</b> <span>Protocol locked (UDP); player camera/body transform read verified in-game; loopback stream proven (3,847 packets). Black Flag installed and its MP netcode architecture recovered from strings (<code>NetPlayer</code>, <code>S2C_*</code> field replication).</span></div>
+  </div>
+  <div class="ev b">
+    <div class="when">2026-10-05 · AccCoop · A4</div>
+    <div class="what"><b>The avatar gate resists.</b> <span>Route A (hijack NPC) writes but renders nothing; debug-cheat spawn disproven (transient); player/actor objects are not the engine’s teleport <code>char</code>; the near-player component scan finds only constant data. Deep RE shows the set-transform API is scoped to a debug wrapper.</span></div>
+  </div>
+  <div class="ev">
+    <div class="when">2026-10-05 · strategy</div>
+    <div class="what"><b>Pivot to Black Flag.</b> <span>Decision: build on <code>AC4BFSP.exe</code> because its MP exe is a shipped, working networked-avatar implementation — the oracle Rogue never had.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-05 · BFCoop · B0</div>
+    <div class="what"><b>Black Flag SP analysed.</b> <span>43 MB x86 exe imported and analysed in Ghidra (20 GB heap — 8 GB OOMs). Task-graph registrar confirmed identical to Rogue; <code>Ai::UpdateCamera</code> = <code>0x63bbb0</code>; camera manager global <code>0x02abe588</code>; camera ring offsets located. BF MP oracle decompiled: <code>NetPlayer</code> replicated fields, move-mode <code>+0x398</code>, parkour event scheme.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-05 · BFCoop · B1/B2</div>
+    <div class="what"><b>First Black Flag code built.</b> <span>Ported the patch framework core to x86 (4 arch-specific files) and created the <code>games/ac/blackflag</code> target. <code>AC.BlackFlag.PatchFix.asi</code> (1,056,256 B, i386) contains the <code>PlayerTransform</code> hook and the ported <code>CoopNet</code> transport.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · B3 anchor</div>
+    <div class="what"><b>The player's body position is found and proven.</b> <span>Walk-and-turn test: the candidate field tracks 1:1 while walking and the camera <i>orbits</i> it when turning — so <code>camobj+0x68 → +0x50</code> is the player's world body position. An enhanced probe (dumping the target's vtable + pointers) is deployed so the next run names the class.</span></div>
+  </div>
+    <div class="ev d">
+    <div class="when">2026-10-06 - knowledge</div>
+    <div class="what"><b>Black Flag findings published.</b> <span>Field note + PR <a href="https://github.com/rehan-remade/universal-modder/pull/87" style="color:var(--accent)">#87</a>: reading the player's world transform and body position (native x86 ASI) - covering the x86 framework port and the reflection/RTTI dead ends.</span></div>
+  </div><div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · B1</div>
+    <div class="what"><b>B1 confirmed — the plugin runs in Black Flag.</b> <span>First in-game load: Ultimate ASI Loader (x86) + our <code>.asi</code>, both hooks installed, <b>no crash</b>, and a live camera transform read — <code>pos=(1.3,7.1,1.3) quat=(0,0,0.913,0.409)</code> (valid unit quaternion). Found and fixed an RVA arithmetic bug. Game left running with the read-only <code>CamProbe</code> discovery hook armed for the B3 character hunt.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-05 · knowledge</div>
+    <div class="what"><b>Published what was learned.</b> <span>Three field-note PRs opened (<a href="https://github.com/rehan-remade/universal-modder/pull/82" style="color:var(--accent)">#82</a> AC Rogue AnvilNext internals, <a href="https://github.com/rehan-remade/universal-modder/pull/83" style="color:var(--accent)">#83</a> launch wedge, <a href="https://github.com/rehan-remade/universal-modder/pull/84" style="color:var(--accent)">#84</a> AC modding toolkit survey). Five OpenCode skills registered; <code>REFERENCES.md</code> updated.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · B3 crack</div>
+    <div class="what"><b>The character transform is found — and writing it moves Edward.</b> <span>Hardware/software breakpoint at the camera smoother (<code>0xD2218E</code>) captured the <b>source object</b> feeding the camera targets; its matrix translation (<code>+0x40</code>) is the player's feet and its quaternion (<code>+0x100</code>) the facing. A guarded write test teleported Edward — <b>user watched him jump</b>. The camera chain (<code>block+0x50 ← src+0x20 ← src+0x110</code>) is all downstream of it.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · body picker</div>
+    <div class="what"><b>Which body is a renderable character.</b> <span>Class census (~2,650 instances): real crowd bodies carry <code>f7c == -0.50</code> and <b>18–19 children</b>; inactive "proxy" nodes have 8–14 and never render; the player has 27. Drag test: a 0xD-family body pulled from 45 m appeared on command — <i>"he teleported next to me and then walked away"</i> (its AI took over on release).</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · B3 done</div>
+    <div class="what"><b>Co-op ghost confirmed in-game.</b> <span>Plugin v2 publishes the player's feet, receives peer packets, picks a real body (children ≥ 16, up to 200 m) and drives its transform per frame with smoothing + yaw. Fake-peer loopback: <b>2,839/2,839 packets</b>. User verdict: <b>"yup he's circling"</b>.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · B3 clone proven</div>
+    <div class="what"><b>The engine's clone API works from the plugin.</b> <span>The clone (vtable+0xC = <code>FUN_006deff0</code>) is a job-posting chain (allocate + deferred setup callbacks + deep copy). Called on a healthy character object it <b>completed and returned a new object</b> — the earlier "thread deadlock" was really uncaught AVs on stale candidates (the camera thread's job-context init runs fine). The setup callbacks now run <b>inline</b> (runner convention <code>ecx=obj, 0, 0</code> — verified), and the scan matches any cloneable subclass via the clone-slot signature. Visibility = the open question: the world holds only 1–3 character-class objects (player + story NPCs).</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-07 · BFCoop · FULL REVIEW + the new ladder</div>
+    <div class="what"><b>Everything audited; the plan rewritten around the real blocker.</b> <span><b>Solid:</b> two-machine link, read path, B4 read side, the full spawn-system map, 90k game assets extracted, the mod pipeline proven end-to-end (reimport diff-verified). <b>Closed:</b> runtime entity creation (engine creates characters only at world load; mid-game = renderer choke, ~6 approaches + freezes) and the hash-reverse hunt (108M+ tests — ids are runtime keys). <b>The open problem:</b> the hijacked body is <i>streamed away and re-picked</i> — "a haunting, unsustainable" (user) — so the user's spec becomes the new ladder: <b>P1 persistent body (persist-hijack: detach from streaming/cull) → P2 unique assassin look (mod) + HUD marker → P3 parkour animations → P4 host-authoritative kill sync → P5 ships</b>. Note: a true hosted world = out of scope (no engine netcode); this is host-authoritative two instances and is documented as such.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-07 · BFCoop · THE SPAWN SYSTEM</div>
+    <div class="what"><b>The engine's character-creation recipe is decoded — and the whole game's data is extracted.</b> <span>The engine's own 580-call creation census (mass-creator hook) revealed: full-body characters = <code>crc32("Entity")</code> class instances with <b>keys = (32-bit world hash, block index 7/8)</b>; the registration step only fires with non-zero keys (proven: a registered entity spawns stable, no crash); content loads from the world database by key. The old "spawn API" = parts only. Separately: <b>all 25 forge archives extracted</b> (~90k named files, ~15 GB — every character model incl. <code>CHR_U_AhTabai</code>, <code>CHR_P_Aveline</code>, guards, crowds). Hash-reverse hunt closed: 108M+ strings tested, the ids are runtime keys, not names. The last step: <b>one experiment</b> — Entity + real-style key → a complete body.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-07 · BFCoop · hash cracked + spawn API</div>
+    <div class="what"><b>Two breakthroughs: the id system is CRC32, and the free-roam spawn API is found.</b> <span>Verified <code>name → CRC32 → id</code> against the engine's own registry pairs (SaveGame, MissionHistory, ManagedObject) and reversed two: <code>0x0984415E = "Entity"</code>, <code>0x3F742D26 = "EntityGroup"</code>. Then captured the crowd streamer's spawn calls live (read-only probe): the API is <code>FUN_005fd730(template_hash)</code> — template lookup → instantiate → activate → job flush — with 96 real calls captured (all hash <code>0x49BB47AC</code>, the area crowd type). The mission spawner was confirmed <b>mission-gated</b> (closed for free-roam). Built a <b>6.2M-name corpus</b> from all forge data files + hash tooling for name↔id work. Next: find the SP assassin NPC template's name → its CRC32 id → spawn through the engine's own API.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-07 · BFCoop · spawn API decoded / session banked</div>
+    <div class="what"><b>The engine's complete spawn recipe is decoded — and the blocker is the save, not the code.</b> <span>The async clone (vtable+0x8) = serialize + post via queue template <code>0x27F6A3C</code> → <code>FUN_00a201a0(classId 0x0984415E, 0, 0, 0)</code> → <code>vtable[2](stream)</code> deserialize → register — the engine's own render-safe character factory. The serializer requires <code>[this+4]</code> = a valid entity pointer. The chain probe returned no player node because the save is the <b>prologue</b> (scripted state); the B4 node chain was mapped on a free-roam save. Session banked: MODLOG + PLAN carry the full protocol. Resume = one 40-second probe on a free-roam save.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · v0.1 package</div>
+    <div class="what"><b>Friend kit packaged.</b> <span><code>bf-coop/dist/AC4BF-Coop-v0.2.zip</code> — ASI loader + plugin + ini prefilled for Player B (peer IP pre-set, ports 27811↔27810, ClientId 2) + README with the exact expected log lines. Next milestone: the two-machine Radmin run.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · polish + notes</div>
+    <div class="what"><b>Ghost polished; Edward quest mapped; field note published.</b> <span>Plugin updated: picks the body nearest the peer position, faster smoothing, ignores (0,0,0) peer samples, drops streamed-away bodies. Test-day checklist added to the friend kit (reboot first — the kernel likes to keep ghost UDP ports). Edward-model investigation mapped the whole puppet anatomy and the MP-only skin route; field note <a href="https://github.com/rehan-remade/universal-modder/pull/112" style="color:var(--accent)">PR #112</a>.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · MILESTONE</div>
+    <div class="what"><b>Two-machine ghost LIVE over Radmin VPN.</b> <span>First real co-op run: both players saw each other's driven crowd body in-game; logs <code>peer=1 body=1@… fresh=1</code>, the body picked 61.5 m from the peer and driven 13–19 m as he moved. Facing replica confirmed (<i>"he turns to match"</i>). Watch items: slight chop in tracking; peer climbs show as vertical teleports (B4/C2 next). Both sides hit a stuck UDP port (<code>10048</code>) — live port swaps fixed it in-game.</span></div>
+  </div>
+  <div class="ev d">
+    <div class="when">2026-10-06 · BFCoop · B4 writer + Project B</div>
+    <div class="what"><b>The action machine, caught and decoded.</b> <span>A hardware write-watchpoint (WOW64, all-thread) caught the action-state writer <code>FUN_01ab52c0</code> ("BhvAssassin" behavior, one-burst write of <code>+0x8D4/+0x8D8/+0x8E0</code>); its machine <code>FUN_01ac1ad0</code> applies request slots <code>[owner+0x2F50…]</code>. The read side is wired into the plugin (<code>anim_state</code>). The play side opened <b>Project B</b>: a spawn-probe (node-ctor hook) harvested 4 creation paths incl. two rare player-ish ×2 spawns; node hierarchy mapped 3 vtables deep. Next: the class descriptor + creation chain.</span></div>
+  </div>
+</div>
+
+<h2>Gates &amp; risks</h2>
+<table>
+  <thead><tr><th>Risk</th><th style="width:90px">Severity</th><th>Mitigation / status</th></tr></thead>
+  <tbody>
+    <tr><td>Second, drivable avatar (B3)</td><td><span class="badge s-done">Solved</span></td><td>Real crowd bodies are visible and drivable (children ≥ 16, <code>f7c == -0.50</code>); driven from network packets, confirmed in-game.</td></tr>
+    <tr><td>Partner appearance</td><td><span class="badge s-done">Solved</span></td><td><b>Def-swap (mod7): crew &amp; sailors render as Duncan Walpole robes</b> — the partner at the ship is Duncan. Docks crowd has no swapped variants (picker bias todo).</td></tr>
+    <tr><td>Ghost UDP endpoints (bind <code>10048</code>)</td><td><span class="badge s-done">Fixed</span></td><td>Dead processes keep owning the port. <b>Solved in the deployed build:</b> <code>SO_REUSEADDR</code> + bind-retry (robot-peer sessions ran a full clean hour). Fallback: swap <code>LocalPort</code>/<code>RemotePort</code> — hot reload applies in-game.</td></tr>
+    <tr><td>Cross-machine NPC identity (damage relay)</td><td><span class="badge s-active">Med</span></td><td><b>Class ids = CRC32(name)</b> + a runtime class resolver (3,246 vtables named) — NPCs matched by position + class + HP; wire into the relay.</td></tr>
+    <tr><td>Parkour animation sync (B4)</td><td><span class="badge s-active">High</span></td><td>Replicate custom-action enter/exit as discrete events (BF MP’s proven scheme).</td></tr>
+    <tr><td>Launch wedge — unkillable <code>ACC.exe</code> / <code>AC4BFSP.exe</code> zombie</td><td><span class="badge s-active">Med</span></td><td>Quit cleanly; one launch per boot; use crash-isolated hooks + a read-only discovery pass before risky calls.</td></tr>
+    <tr><td>Ghidra heap on 32-bit exes</td><td><span class="badge s-done">Solved</span></td><td>8 GB OOMs on the x86 analyzer; use 20 GB.</td></tr>
+    <tr><td>Framework was x64-only</td><td><span class="badge s-done">Solved</span></td><td>Ported four architecture-specific files; x64 Rogue build untouched.</td></tr>
+    <tr><td>Body loss in water · picker adopts sitting NPCs</td><td><span class="badge s-active">Low</span></td><td>Water bypasses the despawn pin (engine recycle path) — shore-wait behaviour planned. Stance filter for the picker todo.</td></tr>
+  </tbody>
+</table>
+
+<h2>Next actions</h2>
+<table>
+  <thead><tr><th style="width:46px">#</th><th>Action</th><th style="width:150px">Unblocks</th><th style="width:150px">Needs</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><b>Two-machine run</b> — <b>DONE 2026-10-06</b> (both directions, facing confirmed; see the milestone entry above)</td><td><b>the co-op milestone</b></td><td>—</td></tr>
+    <tr><td>1b</td><td><b>C1 session</b> — shipped in kit v0.3; loopback-verified (long robot-peer runs: handshake + acked events clean for a full hour); two-machine rejoin check pending</td><td>relay foundation</td><td>one two-machine session</td></tr>
+    <tr><td>2</td><td><b>B4 read side</b> - <b>DONE 2026-10-06</b> (action state wired into the packet: <code>anim_state</code> + <code>act=</code> logging); play side = the P3 animations step</td><td>P3 parkour</td><td>-</td></tr>
+    <tr><td>2b</td><td><b>P1 persistent partner body</b> — <b>DONE 2026-10-08 (pin v2)</b>; remaining: shore-wait behaviour for water losses + stance filter for the picker</td><td>everything else ✔</td><td>one small dev pass</td></tr>
+    <tr><td>2c</td><td><b>P2 look + marker</b> — look <b>DONE via def-swap (mod7: Duncan robes)</b>; marker = D3D overlay + world→screen projection (todo)</td><td>partner identity ✔</td><td>overlay build</td></tr>
+    <tr><td>3</td><td><b>DamageProbe + combat relay</b> — hook candidate damage functions to pin the exact apply path, then TX (HP deltas) → RX (apply/kill) in the plugin</td><td><b>P4 kill sync</b></td><td>dev build + one fight test</td></tr>
+    <tr><td>4</td><td><b>P3 parkour animations (play side)</b> — StateProbe movement tour (walk/run/climb/swim) → drive the partner's animation state in sync</td><td>P3 parkour</td><td>tour + wiring</td></tr>
+    <tr><td>5</td><td>Friend kit <b>v0.5</b> (post-pin, post-Duncan, new build) + field note: combat internals (CRC32 ids, health layout, death signature)</td><td>knowledge base + friend test</td><td>desk work</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <b>Where to look for detail:</b> <code>bf-coop/PLAN.md</code>, <code>bf-coop/RE-NOTES.md</code>, <code>bf-coop/MODLOG.md</code> (Black Flag) ·
+  <code>acc-coop/PLAN.md</code>, <code>RE-NOTES.md</code>, <code>MODLOG.md</code> (Rogue) · <code>REFERENCES.md</code> (tools &amp; repos).
+</div>
+
+<footer>
+  Assassin's Creed Co-op tracker · offline/LAN only, single-player titles, no anti-cheat touched · ships code only, no game files.
+</footer>
+
+</div>
+</body>
+</html>

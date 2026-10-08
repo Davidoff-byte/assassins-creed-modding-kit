@@ -1,0 +1,132 @@
+---
+# Base style
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Latest
+DisableFormat: false
+
+# Indentation
+AccessModifierOffset: -2
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+IndentCaseLabels: true
+IndentPPDirectives: AfterHash
+IndentWrappedFunctionNames: true
+NamespaceIndentation: All
+CompactNamespaces: false
+FixNamespaceComments: true
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros: Consecutive
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlignEscapedNewlines: Left
+AlignOperands: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+DerivePointerAlignment: false
+PointerAlignment: Right
+
+# Single-line and short constructs
+AllowAllArgumentsOnNextLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: false
+
+# Line breaking
+ColumnLimit: 100
+BinPackArguments: false
+BinPackParameters: OnePerLine
+AlwaysBreakBeforeMultilineStrings: false
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Attach
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakStringLiterals: false
+BreakTemplateDeclarations: Yes
+PackConstructorInitializers: CurrentLine
+Cpp11BracedListStyle: true
+InsertNewlineAtEOF: true
+MaxEmptyLinesToKeep: 1
+KeepEmptyLines:
+  AtStartOfBlock: false
+ReflowComments: Always
+
+# Includes
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # C standard library
+  - Regex: '^<c(assert|ctype|errno|fenv|float|inttypes|limits|locale|math|setjmp|signal|stdarg|stddef|stdint|stdio|stdlib|string|time|uchar|wchar|wctype)>'
+    Priority: 10
+  # C++ standard library (catch-all for angle brackets without .h)
+  - Regex: '^<[a-z_]+(|/.*)>$'
+    Priority: 20
+  # Windows.h must precede headers that depend on it (SortPriority 0 is
+  # a sentinel in clang-format — use non-zero values for both entries)
+  - Regex: '^<Windows\.h>'
+    Priority: 30
+    SortPriority: 30
+  # Other Windows / system headers
+  - Regex: '^<(winternl|DbgHelp|guiddef|timeapi|dxgi)\.h>'
+    Priority: 30
+    SortPriority: 31
+  # Test frameworks
+  - Regex: '^<catch2/'
+    Priority: 35
+  # External libraries
+  - Regex: '^<(injector|mini|safetyhook|spdlog|zydis)/'
+    Priority: 40
+  - Regex: '^<Hooking\.Patterns\.h>'
+    Priority: 40
+  # Angle-bracket fallback
+  - Regex: '^<'
+    Priority: 25
+  # Logger (foundational utility, before other project headers)
+  - Regex: '^"core/logger\.hpp"'
+    Priority: 50
+  # Core project headers
+  - Regex: '^"core/'
+    Priority: 60
+  # Game project headers
+  - Regex: '^"games/'
+    Priority: 70
+  # Other project headers
+  - Regex: '^"'
+    Priority: 80
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: true
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpacesInAngles: Never
+SpacesInContainerLiterals: false
+SpacesInParens: Never
+SpacesInSquareBrackets: false
+
+# Penalties
+PenaltyBreakAssignment: 10
+PenaltyBreakBeforeFirstCallParameter: 30
+PenaltyBreakComment: 10
+PenaltyBreakFirstLessLess: 0
+PenaltyBreakString: 10
+PenaltyBreakTemplateDeclaration: 0
+PenaltyExcessCharacter: 120
+PenaltyReturnTypeOnItsOwnLine: 5
+
+# Misc
+SortUsingDeclarations: Never

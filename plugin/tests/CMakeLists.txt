@@ -1,0 +1,36 @@
+add_executable(PatchFix.Tests
+    test_parsers.cpp
+    test_ini_field.cpp
+    test_topo_sort.cpp
+    test_pattern_report.cpp
+    test_pe_file.cpp
+)
+
+target_link_libraries(PatchFix.Tests PRIVATE
+    Catch2::Catch2WithMain
+    mINI
+)
+
+target_include_directories(PatchFix.Tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/core/include"
+)
+
+target_compile_definitions(PatchFix.Tests PRIVATE ${SHARED_COMPILE_DEFINITIONS})
+target_compile_options(PatchFix.Tests PRIVATE ${SHARED_COMPILE_OPTIONS})
+
+set_target_properties(PatchFix.Tests PROPERTIES
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+)
+
+# Register each TEST_CASE with CTest. Without this `ctest` reports success
+# having run nothing, since the executable alone is not a registered test.
+#
+# PRE_TEST defers enumeration to test time. The default runs the freshly linked
+# executable during the build, which a cross-compiled target cannot do until an
+# emulator is present.
+list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
+include(Catch)
+catch_discover_tests(PatchFix.Tests DISCOVERY_MODE PRE_TEST)

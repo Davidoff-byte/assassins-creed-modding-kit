@@ -1,0 +1,200 @@
+name: Build
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  LLVM_VERSION: '22'
+  MSVC_WINE_COMMIT: '514f8ea34842cd6d831804d0e9658d3a32870ae1'
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          extra-tools: clang-format
+
+      - name: clang-format check
+        run: |
+          find core games tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
+            | xargs -0 clang-format --dry-run --Werror
+
+  tidy:
+    name: Clang-Tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          extra-tools: clang-tidy
+
+      - name: Clone msvc-wine
+        run: git clone https://github.com/mstorsjo/msvc-wine.git /tmp/msvc-wine && git -C /tmp/msvc-wine checkout $MSVC_WINE_COMMIT
+
+      - name: Get MSVC version
+        id: msvc-version
+        run: |
+          MSVC_VER=$(/tmp/msvc-wine/vsdownload.py --print-version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | tail -1)
+          echo "version=$MSVC_VER" >> "$GITHUB_OUTPUT"
+
+      - name: Restore msvc-wine cache
+        id: msvc-wine-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.msvc
+          key: msvc-wine-${{ steps.msvc-version.outputs.version }}-${{ hashFiles('cmake/toolchains/*.cmake') }}
+          restore-keys: msvc-wine-
+
+      - name: Install msvc-wine
+        if: steps.msvc-wine-cache.outputs.cache-hit != 'true'
+        run: |
+          /tmp/msvc-wine/vsdownload.py --accept-license --dest ~/.msvc
+          /tmp/msvc-wine/install.sh ~/.msvc
+
+      - name: Configure CMake
+        run: cmake --preset wine-x64
+
+      - name: Build PCH
+        run: |
+          # Every target's PCH, so adding a game needs no change here.
+          PCH=$(ninja -C build -f build-Release.ninja -t targets all \
+                | grep -oP '^\S+/Release/cmake_pch\.cxx\.pch(?=:)')
+          test -n "$PCH"
+          cmake --build --preset wine-x64-release --target $PCH
+
+      - name: Filter compile DB to Release
+        run: python3 -c "import json,sys;j=[e for e in json.load(sys.stdin) if '/Release/' in e.get('command','')];assert j,'empty compile db after Release filter';json.dump(j,sys.stdout)" < build/compile_commands.json > build/cc_release.json && mv build/cc_release.json build/compile_commands.json
+
+      - name: clang-tidy check
+        run: |
+          find core/src games -type f -name '*.cpp' -not -path '*/tests/*' -print0 \
+            | xargs -0 -P "$(nproc)" -n 1 clang-tidy -p build --warnings-as-errors='*'
+
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure Release
+        run: cmake --preset windows-x64-release
+
+      - name: Build Release
+        run: cmake --build --preset windows-x64-release --config Release
+
+      - name: Build tests
+        run: cmake --build --preset windows-x64-release --config Release --target PatchFix.Tests
+
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
+
+      - name: Configure Debug
+        run: cmake --preset windows-x64-debug
+
+      - name: Build Debug
+        run: cmake --build --preset windows-x64-debug --config Debug
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: PatchFix-windows-${{ github.sha }}
+          path: |
+            build/bin/Release/*.asi
+            build/bin/Debug/*.asi
+            games/**/*.ini
+          if-no-files-found: error
+
+  build-wine:
+    name: Build (Wine cross-compile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+
+      - name: Clone msvc-wine
+        run: git clone https://github.com/mstorsjo/msvc-wine.git /tmp/msvc-wine && git -C /tmp/msvc-wine checkout $MSVC_WINE_COMMIT
+
+      - name: Get MSVC version
+        id: msvc-version
+        run: |
+          MSVC_VER=$(/tmp/msvc-wine/vsdownload.py --print-version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | tail -1)
+          echo "version=$MSVC_VER" >> "$GITHUB_OUTPUT"
+
+      - name: Restore msvc-wine cache
+        id: msvc-wine-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.msvc
+          key: msvc-wine-${{ steps.msvc-version.outputs.version }}-${{ hashFiles('cmake/toolchains/*.cmake') }}
+          restore-keys: msvc-wine-
+
+      - name: Install msvc-wine
+        if: steps.msvc-wine-cache.outputs.cache-hit != 'true'
+        run: |
+          /tmp/msvc-wine/vsdownload.py --accept-license --dest ~/.msvc
+          /tmp/msvc-wine/install.sh ~/.msvc
+
+      - name: Install Wine
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y wine
+
+      - name: Configure
+        run: cmake --preset wine-x64
+
+      - name: Build Release
+        run: cmake --build --preset wine-x64-release
+
+      - name: Build Debug
+        run: cmake --build --preset wine-x64-debug
+
+      - name: Build tests
+        run: cmake --build --preset wine-x64-release --target PatchFix.Tests
+
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure --no-tests=error
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: PatchFix-wine-${{ github.sha }}
+          path: |
+            build/bin/Release/*.asi
+            build/bin/Debug/*.asi
+            games/**/*.ini
+          if-no-files-found: error

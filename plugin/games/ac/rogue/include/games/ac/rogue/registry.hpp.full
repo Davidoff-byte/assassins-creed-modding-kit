@@ -1,0 +1,58 @@
+﻿#pragma once
+
+#include "core/hooks/registry/registry.hpp"
+
+#include "games/ac/rogue/hooks/camera_lean.hpp"
+#include "games/ac/rogue/hooks/combat_trace.hpp"
+#include "games/ac/rogue/hooks/counter_window.hpp"
+#include "games/ac/rogue/hooks/counter_probe.hpp"
+#include "games/ac/rogue/hooks/counter_gate.hpp"
+#include "games/ac/rogue/hooks/combat_tweaks.hpp"
+#include "games/ac/rogue/hooks/ai_pacing.hpp"
+#include "games/ac/rogue/hooks/knife_probe.hpp"
+#include "games/ac/rogue/hooks/knife_grant.hpp"
+#include "games/ac/rogue/hooks/display_detection.hpp"
+#include "games/ac/rogue/hooks/fov_correction.hpp"
+#include "games/ac/rogue/hooks/fps_unlock.hpp"
+#include "games/ac/rogue/hooks/full_mode_list.hpp"
+#include "games/ac/rogue/hooks/game_state.hpp"
+#include "games/ac/rogue/hooks/language_unlock.hpp"
+#include "games/ac/rogue/hooks/mode_index_guard.hpp"
+#include "games/ac/rogue/hooks/hijack_avatar.hpp"
+#include "games/ac/rogue/hooks/mouse_smoothing.hpp"
+#include "games/ac/rogue/hooks/player_probe.hpp"
+#include "games/ac/rogue/hooks/player_transform.hpp"
+#include "games/ac/rogue/hooks/viewport_fitting.hpp"
+#include "games/ac/rogue/hooks/viewport_scaling.hpp"
+#include "games/ac/rogue/hooks/weapon_class.hpp"
+
+namespace games::ac::rogue {
+    using AllHooks = hooks::hook_list<GameStateHook,
+                                      DisplayDetectionHook,
+                                      ViewportFittingHook,
+                                      ViewportScalingHook,
+                                      FOVCorrectionHook,
+                                      FPSUnlockHook,
+                                      LanguageUnlockHook,
+                                      ModeIndexGuardHook,
+                                      FullModeListHook,
+                                      CameraLeanHook,
+                                      MouseSmoothingHook,
+                                      PlayerTransformHook,
+                                      PlayerProbeHook,
+                                      HijackAvatarHook,
+                                      WeaponClassHook,
+                                      CombatTraceHook,
+                                      CounterWindowHook,
+                                      CounterProbeHook,
+                                      CounterGateHook,
+                                      CombatTweaksHook,
+                                      AIAggressionHook,
+                                      KnifeProbeHook,
+                                      KnifeGrantHook>;
+
+    using RogueRegistry = hooks::Registry<AllHooks>;
+
+    auto registry() -> RogueRegistry &;
+} // namespace games::ac::rogue
+

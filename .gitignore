@@ -1,0 +1,23 @@
+# Safety net: never commit game files or build artifacts to this repo.
+
+# game binaries and data
+*.exe
+*.dll
+*.asi
+*.forge
+*.data
+*.save
+*.i64
+*.dmp
+*.journal
+
+# build output
+build*/
+target/
+*.pdb
+__pycache__/
+*.pyc
+
+# logs and captures
+logs/
+*.log
