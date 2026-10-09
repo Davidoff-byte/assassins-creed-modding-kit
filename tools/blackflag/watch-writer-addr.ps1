@@ -1,8 +1,15 @@
-# watch-writer-addr.ps1 - hardware WRITE watchpoint on an ARBITRARY address+offset (default +0x40,
-# a character's position). Catches the engine's own writers - use on a RELEASED body (plugin driver
-# off) so every hit is the game's movement/AI code.
-# Attaches as a WOW64 debugger, arms DR0/DR7 on ALL game threads, logs each hit (EIP + regs + ret),
-# then detaches. Watch the game during the capture window.
+# watch-writer-addr.ps1 (v2) - hardware WRITE watchpoint on an ARBITRARY address+offset
+# (default +0x40, a character's position). Catches the engine's own writers.
+# Attaches as a WOW64 debugger, arms DR0/DR7 on ALL game threads, logs each hit
+# (EIP + regs + ret), then detaches.
+#
+# v2 safety fix: per-thread single-step management (the v1 bug crashed the game
+# when several threads hit the watchpoint concurrently: orphaned trap flags were
+# left set at detach -> unhandled STATUS_SINGLE_STEP). v2:
+#   - tracks the set of threads currently stepping over their faulting instruction
+#   - handles single-step traps per thread
+#   - drains all pending single-steps before detaching
+#   - DISARMS (clears DR0-3/DR6/DR7 + trap flag) on every thread before detach
 param(
   [Parameter(Mandatory=$true)][string]$TargetAddr,
   [string]$Offset = "0x40",
@@ -149,7 +156,10 @@ public static class WW {
           c.ContextFlags = 0x10013;
           if (Wow64GetThreadContext(th, ref c)) {
             c.Dr0 = target;
+            c.Dr1 = 0; c.Dr2 = 0; c.Dr3 = 0;
+            c.Dr6 = 0;
             c.Dr7 = 0x000D0001;
+            c.EFlags &= ~0x100u;
             if (Wow64SetThreadContext(th, ref c)) armed++;
           }
           CloseHandle(th);
@@ -161,15 +171,39 @@ public static class WW {
     return sb.ToString();
   }
 
-  public static string Run(int pid, long target, int waitMs, int capMs) {
+  public static int Disarm(int pid) {
+    int n = 0;
+    IntPtr snap = CreateToolhelp32Snapshot(4, pid);
+    if (snap != (IntPtr)(-1)) {
+      THREADENTRY32W te = new THREADENTRY32W();
+      te.dwSize = (uint)Marshal.SizeOf(typeof(THREADENTRY32W));
+      if (Thread32First(snap, ref te)) {
+        do {
+          if (te.th32OwnerProcessID != pid) continue;
+          IntPtr th = OpenThread(0x001A, false, (int)te.th32ThreadID);
+          if (th == IntPtr.Zero) continue;
+          WOW64_CONTEXT c = new WOW64_CONTEXT();
+          c.ContextFlags = 0x10013;
+          if (Wow64GetThreadContext(th, ref c)) {
+            c.Dr0 = 0; c.Dr1 = 0; c.Dr2 = 0; c.Dr3 = 0;
+            c.Dr6 = 0; c.Dr7 = 0;
+            c.EFlags &= ~0x100u;
+            if (Wow64SetThreadContext(th, ref c)) n++;
+          }
+          CloseHandle(th);
+        } while (Thread32Next(snap, ref te));
+      }
+      CloseHandle(snap);
+    }
+    return n;
+  }
+
+  public static string Run(int pid, long target, int waitMs, int capMs, int maxHits) {
     StringBuilder sb = new StringBuilder();
     IntPtr h = OpenProcess(0x1F0FFF, false, pid);
     if (h == IntPtr.Zero) return "OpenProcess failed: " + Marshal.GetLastWin32Error();
 
-    // 1) no scanning: the watch target is the given address (passed in as `target`)
     sb.AppendLine("watch target = 0x" + target.ToString("X8"));
-
-    // 2) attach + arm
     if (!DebugActiveProcess(pid)) {
       sb.AppendLine("DebugActiveProcess failed: " + Marshal.GetLastWin32Error());
       CloseHandle(h);
@@ -177,11 +211,12 @@ public static class WW {
     }
     DebugSetProcessKillOnExit(false);
 
-    int hits = 0, armed = 0, stepTid = 0;
-    bool stepping = false, finished = false;
+    int hits = 0, armed = 0;
+    bool firstArmDone = false, finished = false, draining = false;
+    var pendingStep = new HashSet<int>();
     long deadline = DateTime.UtcNow.Ticks + (long)(capMs + 30000) * 10000L;
     long armUntil = DateTime.UtcNow.Ticks + 3000L * 10000L;
-    bool firstArmDone = false;
+    long drainUntil = 0;
     try {
       while (!finished && DateTime.UtcNow.Ticks < deadline) {
         DEBUG_EVENT ev;
@@ -190,43 +225,66 @@ public static class WW {
         if (ev.dwDebugEventCode == 1) {
           uint exc = ev.ExceptionCode;
           if (exc == 0x80000004u || exc == 0x4000001Eu) {
-            IntPtr th = OpenThread(0x001A, false, (int)ev.dwThreadId);
-            WOW64_CONTEXT c = new WOW64_CONTEXT();
-            c.ContextFlags = 0x10013;
-            if (Wow64GetThreadContext(th, ref c)) {
-              if (stepping && ev.dwThreadId == stepTid) {
-                c.EFlags &= ~0x100u;
-                c.Dr7 = 0x000D0001;
-                Wow64SetThreadContext(th, ref c);
-                stepping = false;
-              } else if ((c.Dr6 & 1) != 0) {
-                hits++;
-                uint ret = 0;
-                byte[] stk = Read(h, c.Esp, 4);
-                if (stk.Length >= 4) ret = BitConverter.ToUInt32(stk, 0);
-                sb.AppendFormat("HIT#{0} tid={1} eip=0x{2:X8} ret=0x{3:X8} eax=0x{4:X8} ecx=0x{5:X8} esi=0x{6:X8} ebx=0x{7:X8} edx=0x{8:X8} edi=0x{9:X8} ebp=0x{10:X8} esp=0x{11:X8}\r\n",
-                  hits, ev.dwThreadId, c.Eip, ret, c.Eax, c.Ecx, c.Esi, c.Ebx, c.Edx, c.Edi, c.Ebp, c.Esp);
-                c.Dr7 = 0;
-                c.EFlags |= 0x100u;
-                Wow64SetThreadContext(th, ref c);
-                stepping = true;
-                stepTid = (int)ev.dwThreadId;
-                if (hits >= 24) finished = true;
+            int tid = (int)ev.dwThreadId;
+            IntPtr th = OpenThread(0x001A, false, tid);
+            if (th != IntPtr.Zero) {
+              WOW64_CONTEXT c = new WOW64_CONTEXT();
+              c.ContextFlags = 0x10013;
+              if (Wow64GetThreadContext(th, ref c)) {
+                if (pendingStep.Contains(tid)) {
+                  // our single-step completed: clear TF + Dr6, re-arm (or disarm in drain)
+                  c.EFlags &= ~0x100u;
+                  c.Dr6 = 0;
+                  if (draining) { c.Dr7 = 0; }
+                  else { c.Dr0 = (uint)target; c.Dr7 = 0x000D0001; }
+                  Wow64SetThreadContext(th, ref c);
+                  pendingStep.Remove(tid);
+                } else if ((c.Dr6 & 1) != 0) {
+                  // fresh write hit on DR0
+                  hits++;
+                  uint ret = 0;
+                  byte[] stk = Read(h, c.Esp, 4);
+                  if (stk.Length >= 4) ret = BitConverter.ToUInt32(stk, 0);
+                  sb.AppendFormat("HIT#{0} tid={1} eip=0x{2:X8} ret=0x{3:X8} eax=0x{4:X8} ecx=0x{5:X8} esi=0x{6:X8} ebx=0x{7:X8} edx=0x{8:X8} edi=0x{9:X8} ebp=0x{10:X8} esp=0x{11:X8}\r\n",
+                    hits, tid, c.Eip, ret, c.Eax, c.Ecx, c.Esi, c.Ebx, c.Edx, c.Edi, c.Ebp, c.Esp);
+                  if (draining) {
+                    c.Dr7 = 0; c.Dr6 = 0;
+                    Wow64SetThreadContext(th, ref c);
+                  } else {
+                    // disable DR7, clear Dr6, step over the faulting instruction
+                    c.Dr7 = 0;
+                    c.Dr6 = 0;
+                    c.EFlags |= 0x100u;
+                    Wow64SetThreadContext(th, ref c);
+                    pendingStep.Add(tid);
+                  }
+                  if (hits >= maxHits) finished = true;
+                } else {
+                  // orphan single-step (not ours): clear TF, clear Dr6, re-arm/disarm
+                  c.EFlags &= ~0x100u;
+                  c.Dr6 = 0;
+                  if (draining) { c.Dr7 = 0; }
+                  else { c.Dr0 = (uint)target; c.Dr7 = 0x000D0001; }
+                  Wow64SetThreadContext(th, ref c);
+                }
               }
+              CloseHandle(th);
             }
-            if (th != IntPtr.Zero) CloseHandle(th);
           } else {
             cont = 0x80010001u;
           }
         } else if (ev.dwDebugEventCode == 2 || ev.dwDebugEventCode == 3) {
-          if (firstArmDone || ev.dwDebugEventCode == 3) {
+          if (!finished && (firstArmDone || ev.dwDebugEventCode == 3)) {
             IntPtr th = OpenThread(0x001A, false, (int)ev.dwThreadId);
             if (th != IntPtr.Zero) {
               WOW64_CONTEXT c = new WOW64_CONTEXT();
               c.ContextFlags = 0x10013;
               if (Wow64GetThreadContext(th, ref c)) {
                 c.Dr0 = (uint)target;
+                c.Dr1 = 0; c.Dr2 = 0; c.Dr3 = 0;
+                c.Dr6 = 0;
                 c.Dr7 = 0x000D0001;
+                c.EFlags &= ~0x100u;
                 if (Wow64SetThreadContext(th, ref c)) armed++;
               }
               CloseHandle(th);
@@ -242,10 +300,50 @@ public static class WW {
           sb.AppendLine(Arm(pid, (uint)target, out a));
           armed += a;
           firstArmDone = true;
-          sb.AppendLine(">>> ARMED - vault/climb now <<<");
+          sb.AppendLine(">>> ARMED <<<");
+        }
+        if (finished && !draining) {
+          draining = true;
+          drainUntil = DateTime.UtcNow.Ticks + 4000L * 10000L;
+          sb.AppendLine("draining " + pendingStep.Count + " pending single-step thread(s)");
         }
       }
+
+      // drain: keep pumping debug events until all our pending single-steps are handled
+      while (draining && pendingStep.Count > 0 && DateTime.UtcNow.Ticks < drainUntil) {
+        DEBUG_EVENT ev;
+        if (!WaitForDebugEvent(out ev, 100)) { if (Marshal.GetLastWin32Error() == 121) continue; else break; }
+        uint cont2 = 0x00010002u;
+        if (ev.dwDebugEventCode == 1) {
+          uint exc = ev.ExceptionCode;
+          if (exc == 0x80000004u || exc == 0x4000001Eu) {
+            int tid = (int)ev.dwThreadId;
+            IntPtr th = OpenThread(0x001A, false, tid);
+            if (th != IntPtr.Zero) {
+              WOW64_CONTEXT c = new WOW64_CONTEXT();
+              c.ContextFlags = 0x10013;
+              if (Wow64GetThreadContext(th, ref c)) {
+                c.EFlags &= ~0x100u;
+                c.Dr6 = 0;
+                c.Dr7 = 0;
+                Wow64SetThreadContext(th, ref c);
+                pendingStep.Remove(tid);
+              }
+              CloseHandle(th);
+            }
+          } else {
+            cont2 = 0x80010001u;
+          }
+        } else if (ev.dwDebugEventCode == 5) {
+          sb.AppendLine("game exited during drain");
+          break;
+        }
+        ContinueDebugEvent(ev.dwProcessId, ev.dwThreadId, cont2);
+      }
+      if (pendingStep.Count > 0) sb.AppendLine("WARNING: " + pendingStep.Count + " thread(s) still pending after drain");
     } finally {
+      int cleared = Disarm(pid);
+      sb.AppendLine("disarmed " + cleared + " threads (DRx + trap flag cleared)");
       DebugActiveProcessStop(pid);
     }
     sb.AppendLine("finished: " + hits + " hit(s), " + armed + " threads armed");
@@ -256,7 +354,7 @@ public static class WW {
 '@
 
 $watchAddr = [uint32]([Convert]::ToUInt32(($TargetAddr -replace '^0x',''),16) + [Convert]::ToUInt32(($Offset -replace '^0x',''),16))
-$res = [WW]::Run($pidG, $watchAddr, $WaitSec * 1000, $CaptureSec * 1000)
+$res = [WW]::Run($pidG, $watchAddr, $WaitSec * 1000, $CaptureSec * 1000, $MaxHits)
 $res
 $logDir = "C:\Users\Administrator\Documents\Default Project\bf-coop\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
