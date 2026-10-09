@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""READ-ONLY: chase scene node from walk-child and find per-frame churn blocks.
+"""READ-ONLY: find the hottest per-frame-changing dword in a live NPC's anim block.
 
-Usage: f_probe.py <pid>
+Picks up to 2 NPCs (prefer movers), walks c14 -> scene node -> pointer targets,
+samples 0x100 bytes of each target twice (~0.12s apart) and prints:
+  HOT 0x<addr> <changed-bytes> <rows>
+for the single hottest 4-byte-aligned dword (must have >=3 changed bytes).
+
+Usage: hotpick.py <pid>
 """
 import ctypes
 import struct
@@ -36,30 +41,7 @@ def f3(a):
     return struct.unpack('<fff', b) if b else None
 
 
-def churn(tag, a, n=0x1800, dt=0.15):
-    b1 = rd(a, n)
-    if not b1:
-        print('  %s 0x%08X: unreadable' % (tag, a))
-        return
-    time.sleep(dt)
-    b2 = rd(a, n)
-    if not b2:
-        return
-    diff = [i for i in range(0, len(b1)) if b1[i] != b2[i]]
-    if not diff:
-        print('  %s 0x%08X: no churn in %d bytes' % (tag, a, n))
-        return
-    rows = {}
-    for i in diff:
-        rows.setdefault(i // 16, 0)
-        rows[i // 16] += 1
-    top = sorted(rows.items(), key=lambda kv: -kv[1])[:8]
-    print('  %s 0x%08X: %d bytes changed; top rows: %s' % (
-        tag, a, len(diff), ', '.join('+%X(%d)' % (r * 16, c) for r, c in top)))
-
-
 def is_ptr(v):
-    # heap or data pointer candidates (module 0x400000..0xF30000 excluded)
     return 0x10000 < v < 0xFF000000 and not (0x400000 <= v < 0xF30000)
 
 
@@ -97,7 +79,7 @@ while addr < 0x7FFF0000:
     addr = base + size
 
 p0 = {a: f3(a + 0x40) for a in chars}
-time.sleep(1.0)
+time.sleep(0.8)
 scored = []
 for a in chars:
     p = f3(a + 0x40)
@@ -106,41 +88,51 @@ for a in chars:
         d = ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5
         scored.append((d, a))
 scored.sort(reverse=True)
-d, a = scored[0]
-if d < 0.5:
-    print('NO LIVE WALKER (best moved %.2fm in 1s) - world likely paused/focus lost' % d)
-    sys.exit(1)
-ctl = u32(a + 0xE8)
-kb = u32(a + 0x60)
-cnt = u16(a + 0x66)
-c14 = None
-for i in range(min(cnt, 48)):
-    k = u32(kb + i * 4)
-    if u32(k) == 0x01E41E58:
-        c14 = k
-print('walker ent=0x%08X moved=%.2fm c14=0x%08X' % (a, d, c14))
-if c14:
-    for off in (0x134, 0x138, 0x140, 0x144, 0x128, 0x12C, 0x130):
-        print('  c14+0x%X = 0x%08X' % (off, u32(c14 + off)))
+
+best = []
+tried = 0
+for d, a in scored[:40]:
+    if tried >= 2:
+        break
+    kb = u32(a + 0x60)
+    cnt = u16(a + 0x66)
+    c14 = None
+    for i in range(min(cnt, 48)):
+        k = u32(kb + i * 4)
+        if u32(k) == 0x01E41E58:
+            c14 = k
+            break
+    if not c14:
+        continue
     node = u32(c14 + 0x138) or u32(c14 + 0x134)
-    print('== node 0x%08X dump ==' % node)
-    b = rd(node, 0x100)
-    if b:
-        for row in range(0, 0x100, 0x10):
-            print('   +%03X: %s' % (row, ' '.join('%08X' % struct.unpack_from('<I', b, row + k * 4)[0] for k in range(4))))
-    cands = []
+    if not node:
+        continue
+    targets = []
     for off in range(0x40, 0x100, 4):
         v = u32(node + off)
         if is_ptr(v):
-            cands.append((off, v))
-    # node+0x90 looks like {count, ptr, ptr, ptr} - grab the array entries too
-    cnt90 = u32(node + 0x90)
-    if 0 < cnt90 < 64:
-        for k in range(min(cnt90, 6)):
-            v = u32(node + 0x94 + k * 4)
-            if is_ptr(v):
-                cands.append((0x94 + k * 4, v))
-    print('== pointer candidates under node: %s ==' % ', '.join('+%X->0x%08X' % c for c in cands))
-    churn('node', node)
-    for off, v in cands[:10]:
-        churn('node+%X' % off, v, 0x800)
+            targets.append(v)
+    if not targets:
+        continue
+    tried += 1
+    for t in targets[:24]:
+        b1 = rd(t, 0x100)
+        if not b1:
+            continue
+        time.sleep(0.12)
+        b2 = rd(t, 0x100)
+        if not b2:
+            continue
+        for off in range(0, 0x100, 4):
+            ch = sum(1 for i in range(4) if b1[off + i] != b2[off + i])
+            if ch:
+                best.append((ch, t + off, a, d))
+best.sort(reverse=True)
+print('samples: %d' % len(best))
+for ch, addr, a, d in best[:8]:
+    print('  hot 0x%08X changed=%d npc=0x%08X moved=%.2f' % (addr, ch, a, d))
+if best and best[0][0] >= 3:
+    print('HOT 0x%08X' % best[0][1])
+    sys.exit(0)
+print('NO HOT DWORD (best=%s)' % (best[0][0] if best else 0))
+sys.exit(1)
