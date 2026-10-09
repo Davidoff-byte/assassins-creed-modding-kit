@@ -1,10 +1,6 @@
 # Assassin's Creed — modding & RE work (Rogue, Black Flag, and the Anvil family)
 
-A snapshot of everything we built for the Assassin's Creed games **other than the AC1 project** —
-shared with Banned445, October 2026. Take whatever is useful, ignore the rest.
-
-**Deliberately not here** (you already have them): the AC1 movement RE pack (the `RE/` reports
-00–13, `RE/tools`, `RE/data`) and the movement-rewritten project itself.
+A snapshot of everything we built for the Assassin's Creed games.
 
 No game files are included anywhere in this repo, and nothing here ships any. Every tool reads
 *your own* copy of the game, and the two mods in `mods/` edit *your own* `DataPC.forge`.
