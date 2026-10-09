@@ -17,7 +17,7 @@ No game files are included anywhere in this repo, and nothing here ships any. Ev
 | `docs/coop-project-plan.html` | the co-op project dashboard (open in a browser) |
 | `tools/rogue/` | Rogue `.forge` (v27) reader, in-place patcher, `.data` container reader (LZO), live-memory scripts, ATK wrapper |
 | `tools/coop/` | co-op protocol v2 (`coop_proto.h`), fake peer, playback/interpolation rig |
-| `tools/blackflag/` | ~235 live-RE scripts (PowerShell/Python/C#) + QuickBMS scripts for scimitar archives |
+| `tools/blackflag/` | ~242 live-RE scripts (PowerShell/Python/C#) + QuickBMS scripts for scimitar archives |
 | `tools/ghidra/` | reusable Ghidra scripts used across both projects |
 | `plugin/` | working copy of AC.PatchFix: MSVC fixes, x86 core port, Rogue **and** Black Flag targets, co-op features, parked hooks (`plugin/excluded-hooks/`) |
 | `mods/` | the two shipped Rogue mods — One-Handed Sword, Hidden Dagger |
