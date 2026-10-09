@@ -15,6 +15,10 @@ namespace games::ac::blackflag::coop::ghost {
     // body's controller each frame (config: [Coop] AnimDrive). Read side = B4.
     void set_anim_drive(bool on);
 
+    // Dev/RE: read-only probe of the ghost body's animation objects (config: [Coop] AnimProbe).
+    // Logs the body+0xE8 target's class + memory windows and any field changes while driven.
+    void set_anim_probe(bool on);
+
     // P1 fix: move the body through the engine's own transform setter (notify chain)
     // instead of raw matrix writes (config: [Coop] ApiMove).
     void set_api_move(bool on);

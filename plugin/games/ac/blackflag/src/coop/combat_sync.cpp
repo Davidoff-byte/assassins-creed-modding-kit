@@ -291,17 +291,12 @@ namespace games::ac::blackflag::coop::combat {
                         if (!std::isfinite(pos[0]) || !std::isfinite(pos[1]) || !std::isfinite(pos[2])) {
                             continue;
                         }
-                        // remember every heap-pointer-looking u32 in the body header
+                        // remember every heap-pointer-looking u32 in the body header (no validation
+                        // reads here - reading arbitrary candidates fault-stormed the VEH handler)
                         for (std::size_t o = 0; o + 4 <= 0x1C0; o += 4) {
                             std::uint32_t q = 0;
                             std::memcpy(&q, body_buf + o, 4);
                             if (q < 0x10000000U || q >= 0x7FFF0000U) {
-                                continue;
-                            }
-                            // keep only service-container-looking pointers (begin @+0x70, size @+0x76)
-                            const auto base = safe_read<std::uint32_t>(q + 0x70);
-                            const auto size = safe_read<std::uint16_t>(q + 0x76);
-                            if (base < 0x10000000U || base >= 0x7FFF0000U || size < 1 || size > 300) {
                                 continue;
                             }
                             g_ptr_pos[q] = pos;
@@ -331,7 +326,7 @@ namespace games::ac::blackflag::coop::combat {
         g_kill_test.store(on, std::memory_order_relaxed);
     }
 
-    void tick() {
+    void tick(bool in_world) {
         if (!g_enabled.load(std::memory_order_relaxed)) {
             return;
         }
@@ -342,8 +337,12 @@ namespace games::ac::blackflag::coop::combat {
         }
         g_last_tick = now.QuadPart;
 
-        scan_slice();
-        body_sweep_slice();
+        // Heavy scans run only once the player is actually in the world - nothing at
+        // menus/loading screens (keeps load-time activity at zero).
+        if (in_world) {
+            scan_slice();
+            body_sweep_slice();
+        }
 
         for (std::size_t i = 0; i < g_objs.size();) {
             const auto obj = g_objs[i];

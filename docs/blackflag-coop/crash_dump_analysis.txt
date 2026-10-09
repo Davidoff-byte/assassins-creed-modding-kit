@@ -1,0 +1,579 @@
+================================================================================
+AC4BFSP.exe crash dump analysis
+dump : C:\Users\Administrator\AppData\Local\CrashDumps\AC4BFSP.exe.16084.dmp
+exe  : D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\AC4BFSP.exe
+fault RVA (module-relative): 0x3437a9
+================================================================================
+minidump parsed OK
+
+---- EXCEPTION RECORD ----
+ThreadId            : 25492 (0x6394)
+ExceptionCode       : ExceptionCode.EXCEPTION_ACCESS_VIOLATION (0xc0000005)
+ExceptionFlags      : 0
+ExceptionAddress    : 0x007437a9
+NumberParameters    : 2
+ExceptionInformation: 0; 123
+  (param0: 0=read 1=write, param1: faulting address)
+ThreadContext DataSize=716 Rva=0xad5a
+
+ExceptionAddress 0x007437a9 ; exe ImageBase expected 0x400000 => RVA 0x003437a9 (matches reported fault offset: True)
+
+---- MODULES ----
+module count: 169
+  0x00400000 - 0x0527e000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\AC4BFSP.exe
+  0x774d0000 - 0x7768f000  C:\Windows\System32\ntdll.dll
+  0x76b00000 - 0x76bf0000  C:\Windows\System32\kernel32.dll
+  0x76ec0000 - 0x77188000  C:\Windows\System32\KERNELBASE.dll
+  0x6e820000 - 0x6e8ce000  C:\Windows\System32\apphelp.dll
+  0x6e580000 - 0x6e811000  C:\Windows\System32\AcLayers.dll
+  0x74940000 - 0x74a07000  C:\Windows\System32\msvcrt.dll
+  0x75490000 - 0x754b2000  C:\Windows\System32\gdi32.dll
+  0x75b60000 - 0x75b7a000  C:\Windows\System32\win32u.dll
+  0x754c0000 - 0x755ab000  C:\Windows\System32\gdi32full.dll
+  0x75ad0000 - 0x75b55000  C:\Windows\System32\msvcp_win.dll
+  0x75630000 - 0x75740000  C:\Windows\System32\ucrtbase.dll
+  0x757c0000 - 0x75989000  C:\Windows\System32\user32.dll
+  0x76c00000 - 0x76cbc000  C:\Windows\System32\rpcrt4.dll
+  0x76ad0000 - 0x76af5000  C:\Windows\System32\imm32.dll
+  0x76cc0000 - 0x76d21000  C:\Windows\System32\ws2_32.dll
+  0x76980000 - 0x76a05000  C:\Windows\System32\advapi32.dll
+  0x76340000 - 0x763c3000  C:\Windows\System32\sechost.dll
+  0x75b80000 - 0x761b6000  C:\Windows\System32\shell32.dll
+  0x74840000 - 0x74939000  C:\Windows\System32\WinTypes.dll
+  0x77190000 - 0x77422000  C:\Windows\System32\combase.dll
+  0x71e30000 - 0x71faa000  C:\Windows\System32\d3d9.dll
+  0x74a10000 - 0x74b61000  C:\Windows\System32\ole32.dll
+  0x76e10000 - 0x76eaf000  C:\Windows\System32\oleaut32.dll
+  0x6f040000 - 0x6f232000  C:\Windows\System32\d3d11.dll
+  0x58d10000 - 0x58df5000  C:\Windows\System32\opengl32.dll
+  0x715a0000 - 0x715df000  C:\Windows\System32\d3dx11_43.dll
+  0x70710000 - 0x70819000  C:\Windows\System32\dxgi.dll
+  0x58e00000 - 0x59007000  C:\Windows\System32\D3DCOMPILER_43.dll
+  0x71570000 - 0x7159a000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\GFSDK_SSAO_win32.dll
+  0x588a0000 - 0x58d0f000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\GFSDK_ShadowLib.win32.dll
+  0x71540000 - 0x7156a000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\GFSDK_GodraysLib.Win32.dll
+  0x71530000 - 0x7153a000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\GFSDK_MultiRes.win32.dll
+  0x6ecb0000 - 0x6ecc3000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\GFSDK_PSM.win32.dll
+  0x6ec50000 - 0x6ec76000  C:\Windows\System32\XINPUT1_3.dll
+  0x6ec80000 - 0x6eca8000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\GFSDK_GSA.win32.dll
+  0x585c0000 - 0x588a0000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\dinput8.dll
+  0x74600000 - 0x74627000  C:\Windows\System32\IPHLPAPI.DLL
+  0x58550000 - 0x585b6000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\bink2w32.dll
+  0x584e0000 - 0x5854b000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\uplay_r1_loader.dll
+  0x71c80000 - 0x71ca5000  C:\Windows\System32\dwmapi.dll
+  0x72890000 - 0x72898000  C:\Windows\System32\version.dll
+  0x71fb0000 - 0x71fb8000  C:\Windows\System32\wsock32.dll
+  0x73f40000 - 0x73f73000  C:\Windows\System32\winmm.dll
+  0x742a0000 - 0x744c4000  C:\Windows\System32\wininet.dll
+  0x58490000 - 0x584d2000  C:\Windows\System32\glu32.dll
+  0x71250000 - 0x712a5000  C:\Windows\System32\powrprof.dll
+  0x58290000 - 0x5848f000  C:\Windows\System32\D3DX9_43.dll
+  0x581d0000 - 0x5828f000  C:\Windows\System32\msvcr100.dll
+  0x73480000 - 0x73660000  C:\Windows\System32\dbghelp.dll
+  0x58160000 - 0x581c9000  C:\Windows\System32\msvcp100.dll
+  0x71c40000 - 0x71c76000  C:\Windows\System32\DXCore.dll
+  0x73440000 - 0x7346f000  C:\Windows\System32\dbgcore.dll
+  0x71730000 - 0x7173e000  C:\Windows\System32\umpdc.dll
+  0x57f30000 - 0x58159000  C:\Windows\WinSxS\x86_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.8037_none_85b66681f7afde41\comctl32.dll
+  0x74b70000 - 0x75254000  C:\Windows\System32\windows.storage.dll
+  0x75990000 - 0x75a62000  C:\Windows\System32\SHCore.dll
+  0x75a70000 - 0x75ac2000  C:\Windows\System32\shlwapi.dll
+  0x57ef0000 - 0x57f28000  C:\Windows\System32\dinput8.dll
+  0x57d70000 - 0x57ee5000  F:\Steam\gameoverlayrenderer.dll
+  0x75260000 - 0x75266000  C:\Windows\System32\psapi.dll
+  0x73360000 - 0x733a3000  C:\Windows\System32\cfgmgr32.dll
+  0x59200000 - 0x59373000  C:\Windows\System32\inputhost.dll
+  0x71600000 - 0x716dd000  C:\Windows\System32\CoreMessaging.dll
+  0x55da0000 - 0x56147000  C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\overlay.dll
+  0x763e0000 - 0x76831000  C:\Windows\System32\setupapi.dll
+  0x761d0000 - 0x762d9000  C:\Windows\System32\crypt32.dll
+  0x71420000 - 0x7143f000  C:\Windows\System32\wtsapi32.dll
+  0x72ca0000 - 0x72d81000  C:\Windows\System32\winhttp.dll
+  0x73db0000 - 0x73dcc000  C:\Windows\System32\bcrypt.dll
+  0x6ec20000 - 0x6ec2a000  C:\Windows\System32\secur32.dll
+  0x72830000 - 0x7285b000  C:\Windows\System32\sspicli.dll
+  0x755b0000 - 0x75624000  C:\Windows\System32\bcryptPrimitives.dll
+  0x73750000 - 0x7375a000  C:\Windows\System32\CRYPTBASE.DLL
+  0x57bc0000 - 0x57d65000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\plugins\AC.BlackFlag.PatchFix.asi
+  0x737c0000 - 0x737d5000  C:\Windows\System32\kernel.appcore.dll
+  0x733b0000 - 0x733cd000  C:\Windows\System32\profapi.dll
+  0x6ec30000 - 0x6ec4e000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\steam_api.dll
+  0x56710000 - 0x57bbe000  F:\Steam\steamclient.dll
+  0x76840000 - 0x7685b000  C:\Windows\System32\imagehlp.dll
+  0x72c40000 - 0x72c94000  C:\Windows\System32\mswsock.dll
+  0x56660000 - 0x56701000  F:\Steam\tier0_s.dll
+  0x565c0000 - 0x56658000  F:\Steam\vstdlib_s.dll
+  0x564b0000 - 0x565b9000  F:\Steam\Steam.dll
+  0x56480000 - 0x564a1000  F:\Steam\CSERHelper.dll
+  0x56280000 - 0x5647b000  C:\Program Files (x86)\Ubisoft\Ubisoft Game Launcher\uplay_r1.dll
+  0x72790000 - 0x727a2000  C:\Windows\System32\NapiNSP.dll
+  0x096b0000 - 0x09794000  C:\Windows\System32\dnsapi.dll
+  0x763d0000 - 0x763d7000  C:\Windows\System32\nsi.dll
+  0x72520000 - 0x7252e000  C:\Windows\System32\winrnr.dll
+  0x72500000 - 0x72519000  C:\Windows\System32\nlansp_c.dll
+  0x724e0000 - 0x724f2000  C:\Windows\System32\wshbth.dll
+  0x744d0000 - 0x74532000  C:\Windows\System32\FWPUCLNT.DLL
+  0x71750000 - 0x71758000  C:\Windows\System32\rasadhlp.dll
+  0x717b0000 - 0x71830000  C:\Windows\System32\uxtheme.dll
+  0x783a0000 - 0x7961a000  C:\Program Files\Bandicam\bdcam32.dll
+  0x0fc70000 - 0x0fcf6000  C:\Windows\System32\clbcatq.dll
+  0x70ce0000 - 0x70d5e000  C:\Windows\System32\MMDevAPI.dll
+  0x70f60000 - 0x70f84000  C:\Windows\System32\devobj.dll
+  0x55d10000 - 0x55d9e000  C:\Windows\System32\XAudio2_7.dll
+  0x55cf0000 - 0x55d00000  C:\Windows\System32\resourcepolicyclient.dll
+  0x55b80000 - 0x55ced000  C:\Windows\System32\AudioSes.dll
+  0x70f90000 - 0x7109d000  C:\Windows\System32\Windows.UI.dll
+  0x71520000 - 0x71529000  C:\Windows\System32\avrt.dll
+  0x714e0000 - 0x714eb000  C:\Windows\System32\hid.dll
+  0x76da0000 - 0x76e07000  C:\Windows\System32\wintrust.dll
+  0x728a0000 - 0x728ae000  C:\Windows\System32\msasn1.dll
+  0x6e8e0000 - 0x6e8f7000  C:\Windows\System32\xinput1_4.dll
+  0x55b40000 - 0x55b76000  C:\Windows\System32\deviceaccess.dll
+  0x713a0000 - 0x713ef000  C:\Windows\System32\directxdatabasehelper.dll
+  0x6ee00000 - 0x6eea0000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvldumd.dll
+  0x716e0000 - 0x7170b000  C:\Windows\System32\cryptnet.dll
+  0x727b0000 - 0x7280a000  C:\Windows\System32\wldp.dll
+  0x6ecd0000 - 0x6edf9000  C:\Windows\System32\drvstore.dll
+  0x737a0000 - 0x737b4000  C:\Windows\System32\cryptsp.dll
+  0x73760000 - 0x73792000  C:\Windows\System32\rsaenh.dll
+  0x5da50000 - 0x625b2000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvgpucomp32.dll
+  0x6eb20000 - 0x6ec16000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\NvMemMapStorage.dll
+  0x5a050000 - 0x5da50000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvwgf2um.dll
+  0x6e9e0000 - 0x6eb20000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvppe.dll
+  0x76860000 - 0x76979000  C:\Windows\System32\msctf.dll
+  0x710a0000 - 0x711a3000  C:\Windows\System32\textinputframework.dll
+  0x55ad0000 - 0x55b38000  C:\Windows\System32\nvapi.dll
+  0x555d0000 - 0x55ac5000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvapi_impl.dll
+  0x553f0000 - 0x555c4000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\ApexParticles_x86.dll
+  0x55300000 - 0x553f0000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\ApexFramework_x86.dll
+  0x55020000 - 0x55081000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\PhysX3Cooking_x86.dll
+  0x55090000 - 0x552fc000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\PhysX3_x86.dll
+  0x54e40000 - 0x5501d000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\PhysX3Common_x86.dll
+  0x728f0000 - 0x72917000  C:\Windows\System32\gpapi.dll
+  0x54390000 - 0x54e03000  C:\Program Files (x86)\NVIDIA Corporation\PhysX\Engine\A0A1369354E1\PhysX3Gpu_x86.dll
+  0x53b70000 - 0x54388000  C:\Windows\System32\nvcuda.dll
+  0x51600000 - 0x53b69000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvcuda32.dll
+  0x51570000 - 0x515f8000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvdxgdmal32.dll
+  0x51280000 - 0x51561000  C:\Program Files (x86)\NVIDIA Corporation\PhysX\Engine\A0A1369354E1\APEX_TurbulenceFS_x86.dll
+  0x50fd0000 - 0x5127c000  D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\APEX_Legacy_x86.dll
+  0x507d0000 - 0x50fcc000  C:\Program Files (x86)\NVIDIA Corporation\PhysX\Engine\A0A1369354E1\APEX_Particles_x86.dll
+  0x6f960000 - 0x6fd55000  C:\Windows\System32\d3dcompiler_47.dll
+  0x506c0000 - 0x507cb000  C:\Windows\System32\d3d10.dll
+  0x6e3c0000 - 0x6e3cc000  C:\Windows\System32\d3d10core.dll
+  0x6fda0000 - 0x6ff48000  C:\Windows\System32\mfplat.dll
+  0x50620000 - 0x50646000  C:\Windows\System32\winmmbase.dll
+  0x6fd60000 - 0x6fd91000  C:\Windows\System32\RTWorkQ.dll
+  0x72c30000 - 0x72c3d000  C:\Windows\System32\wbem\wbemprox.dll
+  0x72bc0000 - 0x72c29000  C:\Windows\System32\wbemcomn.dll
+  0x72b70000 - 0x72b81000  C:\Windows\System32\wbem\wbemsvc.dll
+  0x72aa0000 - 0x72b6c000  C:\Windows\System32\wbem\fastprox.dll
+  0x72a80000 - 0x72a95000  C:\Windows\System32\amsi.dll
+  0x715e0000 - 0x715f5000  C:\Windows\System32\windows.staterepositorycore.dll
+  0x50580000 - 0x505f6000  C:\Windows\System32\dsound.dll
+  0x504e0000 - 0x5057a000  C:\Windows\System32\ResampleDmo.DLL
+  0x54e10000 - 0x54e19000  C:\Windows\System32\msdmo.dll
+  0x504c0000 - 0x504d2000  C:\Windows\System32\devrtl.dll
+  0x504a0000 - 0x504b7000  C:\Windows\System32\spinf.dll
+  0x50480000 - 0x5049a000  C:\Windows\System32\spfileq.dll
+  0x3e560000 - 0x3f6b8000  C:\Windows\System32\DriverStore\FileRepository\iigd_dch.inf_amd64_b57fc4f35ff4051b\igd10um32xe.DLL
+  0x3f6c0000 - 0x4380a000  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_0373d825005116d0\nvd3dum.dll
+  0x59720000 - 0x599b2000  C:\Windows\System32\CoreUIComponents.dll
+  0x54e20000 - 0x54e3c000  C:\Windows\System32\D3D12.dll
+  0x501b0000 - 0x5047d000  C:\Windows\System32\D3D12Core.dll
+  0x500f0000 - 0x501aa000  C:\Windows\System32\D3DSCache.dll
+  0x728c0000 - 0x728e8000  C:\Windows\System32\userenv.dll
+  0x50040000 - 0x500e5000  C:\Windows\System32\TextShaping.dll
+  0x50660000 - 0x506b1000  C:\Windows\System32\OneCoreCommonProxyStub.dll
+  0x70930000 - 0x70bbe000  C:\Windows\System32\OneCoreUAPCommonProxyStub.dll
+  0x6eea0000 - 0x6f034000  C:\Windows\System32\dcomp.dll
+  0x71710000 - 0x71722000  C:\Windows\System32\Microsoft.Internal.WarpPal.dll
+  0x72860000 - 0x72889000  C:\Windows\System32\ntmarta.dll
+  0x774c0000 - 0x774ca000  C:\Windows\System32\wow64cpu.dll
+
+AC4BFSP.exe module: name=D:\SteamLibrary\steamapps\common\Assassin's Creed IV Black Flag\AC4BFSP.exe base=0x00400000 size=0x4e7e000 end=0x0527e000
+
+---- THREADS ----
+thread count: 90
+  tid=0x0054fc stack=0x001afc2c+0x3d4    dumpRva=0x5e74c7c  esp=0x001afc30
+  tid=0x003478 stack=0x096af960+0x6a0    dumpRva=0x5e81aa1  esp=0x096af964
+  tid=0x005ca0 stack=0x0c12ecb0+0x1350   dumpRva=0x5bf2669  esp=0x0c12ecb4
+  tid=0x001608 stack=0x0c22fe50+0x1b0    dumpRva=0x57544aa  esp=0x0c22fe54
+  tid=0x003cb4 stack=0x0c39f900+0x700    dumpRva=0x5eb13f3  esp=0x0c39f904
+  tid=0x005b2c stack=0x0c57fe4c+0x1b4    dumpRva=0x5510872  esp=0x0c57fe50
+  tid=0x002e5c stack=0x0c6bfe4c+0x1b4    dumpRva=0x5cabbc3  esp=0x0c6bfe50
+  tid=0x005178 stack=0x0c7ffe4c+0x1b4    dumpRva=0x5952e87  esp=0x0c7ffe50
+  tid=0x000f60 stack=0x0c93fe4c+0x1b4    dumpRva=0x56ede87  esp=0x0c93fe50
+  tid=0x001050 stack=0x0ca7fe4c+0x1b4    dumpRva=0x5d5107e  esp=0x0ca7fe50
+  tid=0x006394 stack=0x0cbbf42c+0xbd4    dumpRva=0x5a9e873  esp=0x0cbbf430  <== FAULTING
+  tid=0x001e5c stack=0x0ccffe4c+0x1b4    dumpRva=0x57a864e  esp=0x0ccffe50
+  tid=0x00353c stack=0x0ce3fe4c+0x1b4    dumpRva=0x5e3f5b9  esp=0x0ce3fe50
+  tid=0x0004a4 stack=0x0cf7fe4c+0x1b4    dumpRva=0x5be0364  esp=0x0cf7fe50
+  tid=0x003b98 stack=0x0d0bfe4c+0x1b4    dumpRva=0x583bf1b  esp=0x0d0bfe50
+  tid=0x0011c4 stack=0x0d1ffe4c+0x1b4    dumpRva=0x5eb4467  esp=0x0d1ffe50
+  tid=0x005ac0 stack=0x0d33fe4c+0x1b4    dumpRva=0x5c7d72d  esp=0x0d33fe50
+  tid=0x006010 stack=0x0d4efe4c+0x1b4    dumpRva=0x5bf8039  esp=0x0d4efe50
+  tid=0x000d9c stack=0x0d62fe4c+0x1b4    dumpRva=0x5856a51  esp=0x0d62fe50
+  tid=0x005928 stack=0x0d76fe4c+0x1b4    dumpRva=0x54fb153  esp=0x0d76fe50
+  tid=0x0035e4 stack=0x0d8afe4c+0x1b4    dumpRva=0x5ca541c  esp=0x0d8afe50
+  tid=0x006304 stack=0x0d9efe4c+0x1b4    dumpRva=0x594a517  esp=0x0d9efe50
+  tid=0x0038a8 stack=0x0db2fe4c+0x1b4    dumpRva=0x56e72f5  esp=0x0db2fe50
+  tid=0x001cf0 stack=0x0e06fe4c+0x1b4    dumpRva=0x5515aef  esp=0x0e06fe50
+  tid=0x0036ec stack=0x0ea3fe38+0x1c8    dumpRva=0x5a9b90b  esp=0x0ea3fe3c
+  tid=0x00624c stack=0x0ee4fda8+0x258    dumpRva=0x5d1cbee  esp=0x0ee4fdac
+  tid=0x002d50 stack=0x0f05fcc4+0x33c    dumpRva=0x5e4c4b3  esp=0x0f05fcc8
+  tid=0x0061f0 stack=0x0f95feb0+0x150    dumpRva=0x5e6d0fc  esp=0x0f95feb4
+  tid=0x003784 stack=0x0ff6fcd4+0x32c    dumpRva=0x5846299  esp=0x0ff6fcd8
+  tid=0x006120 stack=0x101efed8+0x128    dumpRva=0x5c991d1  esp=0x101efedc
+  tid=0x004470 stack=0x10a2fcd4+0x32c    dumpRva=0x583c0cf  esp=0x10a2fcd8
+  tid=0x002078 stack=0x10cbfc60+0x3a0    dumpRva=0x5cab5c9  esp=0x10cbfc64
+  tid=0x001dbc stack=0x111bfe94+0x16c    dumpRva=0x5a9f447  esp=0x111bfe98
+  tid=0x005430 stack=0x1d3bfdb4+0x24c    dumpRva=0x5b9b898  esp=0x1d3bfdb8
+  tid=0x006444 stack=0x1120fe84+0x17c    dumpRva=0x5c79a2c  esp=0x1120fe88
+  tid=0x006440 stack=0x1121ffec+0x14     dumpRva=0x5ca55d0  esp=0x1121fff0
+  tid=0x000edc stack=0x1122ffec+0x14     dumpRva=0x5d17d2d  esp=0x1122fff0
+  tid=0x0013c8 stack=0x1e4cffec+0x14     dumpRva=0x557ad9f  esp=0x1e4cfff0
+  tid=0x003934 stack=0x1e51ffec+0x14     dumpRva=0x5809a8a  esp=0x1e51fff0
+  tid=0x004dac stack=0x1e56ffec+0x14     dumpRva=0x597503e  esp=0x1e56fff0
+  tid=0x003920 stack=0x1e5bffec+0x14     dumpRva=0x5bf0235  esp=0x1e5bfff0
+  tid=0x003dfc stack=0x1e60ffec+0x14     dumpRva=0x5d42f45  esp=0x1e60fff0
+  tid=0x0064ec stack=0x1e65ffec+0x14     dumpRva=0x5e98a85  esp=0x1e65fff0
+  tid=0x001390 stack=0x1e6affec+0x14     dumpRva=0x572c427  esp=0x1e6afff0
+  tid=0x0006c0 stack=0x1e70fbc4+0x43c    dumpRva=0x590876a  esp=0x1e70fbc8
+  tid=0x006008 stack=0x1e75fe84+0x17c    dumpRva=0x5aab5d5  esp=0x1e75fe88
+  tid=0x000c98 stack=0x1efafe84+0x17c    dumpRva=0x5734949  esp=0x1efafe88
+  tid=0x005120 stack=0x1efffe84+0x17c    dumpRva=0x585b1e6  esp=0x1efffe88
+  tid=0x00226c stack=0x1f04fe84+0x17c    dumpRva=0x5a9bad3  esp=0x1f04fe88
+  tid=0x001b74 stack=0x1f09fe84+0x17c    dumpRva=0x5c74315  esp=0x1f09fe88
+  tid=0x003298 stack=0x1f0efe84+0x17c    dumpRva=0x5df15c7  esp=0x1f0efe88
+  tid=0x001dc8 stack=0x1f13fe84+0x17c    dumpRva=0x5510136  esp=0x1f13fe88
+  tid=0x0038cc stack=0x1f18fe84+0x17c    dumpRva=0x57a1a89  esp=0x1f18fe88
+  tid=0x004ecc stack=0x1f1dfe84+0x17c    dumpRva=0x5923bb9  esp=0x1f1dfe88
+  tid=0x005508 stack=0x1f22fe84+0x17c    dumpRva=0x5aeb885  esp=0x1f22fe88
+  tid=0x0046b8 stack=0x1f27fe84+0x17c    dumpRva=0x5cab969  esp=0x1f27fe88
+  tid=0x00674c stack=0x1f2cfe84+0x17c    dumpRva=0x5e3b614  esp=0x1f2cfe88
+  tid=0x00668c stack=0x1f31fe84+0x17c    dumpRva=0x5541296  esp=0x1f31fe88
+  tid=0x0018c4 stack=0x1f36fe84+0x17c    dumpRva=0x57f6cf7  esp=0x1f36fe88
+  tid=0x005754 stack=0x1f3bfe84+0x17c    dumpRva=0x594ebcb  esp=0x1f3bfe88
+  tid=0x000d54 stack=0x1f40fe84+0x17c    dumpRva=0x5b9cc5c  esp=0x1f40fe88
+  tid=0x002cb4 stack=0x1f45fe84+0x17c    dumpRva=0x5d2d808  esp=0x1f45fe88
+  tid=0x003774 stack=0x1f4afe84+0x17c    dumpRva=0x5e80cd9  esp=0x1f4afe88
+  tid=0x006720 stack=0x1f4fffec+0x14     dumpRva=0x56ede73  esp=0x1f4ffff0
+  tid=0x000854 stack=0x1f50ffec+0x14     dumpRva=0x572ef09  esp=0x1f50fff0
+  tid=0x005ecc stack=0x1f59ffec+0x14     dumpRva=0x598178a  esp=0x1f59fff0
+  tid=0x001788 stack=0x21befdb0+0x250    dumpRva=0x5d4fe1e  esp=0x21befdb4
+  tid=0x0052a8 stack=0x2207fdec+0x214    dumpRva=0x5908ba6  esp=0x2207fdf0
+  tid=0x005980 stack=0x21a3fea0+0x160    dumpRva=0x5e229da  esp=0x21a3fea4
+  tid=0x006708 stack=0x223ffc00+0x400    dumpRva=0x584200c  esp=0x223ffc04
+  tid=0x0060e8 stack=0x262ffe70+0x190    dumpRva=0x593a27a  esp=0x262ffe74
+  tid=0x0034ac stack=0x2726fed0+0x130    dumpRva=0x54ea08f  esp=0x2726fed4
+  tid=0x002058 stack=0x2763febc+0x144    dumpRva=0x571627d  esp=0x2763fec0
+  tid=0x003cb0 stack=0x2b48ff0c+0xf4     dumpRva=0x5da1132  esp=0x2b48ff10
+  tid=0x006604 stack=0x2e7afdf8+0x208    dumpRva=0x5856849  esp=0x2e7afdfc
+  tid=0x003214 stack=0x2b17fcac+0x354    dumpRva=0x5723e36  esp=0x2b17fcb0
+  tid=0x003f90 stack=0x2e90fe84+0x17c    dumpRva=0x55523fe  esp=0x2e90fe88
+  tid=0x002cdc stack=0x3414fc28+0x3d8    dumpRva=0x57ffb08  esp=0x3414fc2c
+  tid=0x004f24 stack=0x38b2fe00+0x200    dumpRva=0x594b6cb  esp=0x38b2fe04
+  tid=0x000794 stack=0x3ac5fc50+0x3b0    dumpRva=0x5e4016e  esp=0x3ac5fc54
+  tid=0x0017b0 stack=0x3b2afcec+0x314    dumpRva=0x59531ab  esp=0x3b2afcf0
+  tid=0x004f38 stack=0x059afef0+0x110    dumpRva=0x5e961a2  esp=0x059afef4
+  tid=0x005b40 stack=0x073dfef0+0x110    dumpRva=0x5af19e1  esp=0x073dfef4
+  tid=0x0011dc stack=0x49e3fe0c+0x1f4    dumpRva=0x5c5586c  esp=0x49e3fe10
+  tid=0x0037a8 stack=0x4c8afdb0+0x250    dumpRva=0x5842818  esp=0x4c8afdb4
+  tid=0x003b1c stack=0x3438ff3c+0xc4     dumpRva=0x5a9f5b3  esp=0x3438ff40
+  tid=0x0062f4 stack=0x38c2fdb0+0x250    dumpRva=0x5e9aed1  esp=0x38c2fdb4
+  tid=0x005160 stack=0x49f3fdb0+0x250    dumpRva=0x57bfe83  esp=0x49f3fdb4
+  tid=0x0066b4 stack=0x4a0afef0+0x110    dumpRva=0x54f7ed2  esp=0x4a0afef4
+  tid=0x006308 stack=0x4e9dfef0+0x110    dumpRva=0x5d42ba8  esp=0x4e9dfef4
+
+faulting thread id: 25492 (0x6394)
+faulting ESP (from CONTEXT): 0x0cbbf430
+
+---- FAULTING THREAD STACK: POINTER VALUES INTO AC4BFSP.exe ----
+stack region: 0x0cbbf42c + 0xbd4 (end 0x0cbc0000) dumpRva=0x5a9e873
+read stack bytes: 3028
+total pointer-sized values inside AC4BFSP.exe range: 50
+
+-- ALL hits in stack-address order (ascending addr; x86 stack grows down so lower addr = newer/top) --
+  stack@0x0cbbf71c  value=0x02739d30  RVA=0x02339d30 [>=esp]
+  stack@0x0cbbf720  value=0x00f1f6f0  RVA=0x00b1f6f0 [>=esp]
+  stack@0x0cbbf788  value=0x004ea700  RVA=0x000ea700 [>=esp]
+  stack@0x0cbbf820  value=0x00cccce2  RVA=0x008ccce2 [>=esp]
+  stack@0x0cbbf83c  value=0x02a0ede8  RVA=0x0260ede8 [>=esp]
+  stack@0x0cbbf84c  value=0x04e06380  RVA=0x04a06380 [>=esp]
+  stack@0x0cbbf85c  value=0x04e06398  RVA=0x04a06398 [>=esp]
+  stack@0x0cbbf8bc  value=0x007437a9  RVA=0x003437a9 [>=esp]
+  stack@0x0cbbf928  value=0x00f1a3a5  RVA=0x00b1a3a5 [>=esp]
+  stack@0x0cbbf9b8  value=0x007437a9  RVA=0x003437a9 [>=esp]
+  stack@0x0cbbf9d4  value=0x00f1a3a5  RVA=0x00b1a3a5 [>=esp]
+  stack@0x0cbbfab8  value=0x04e1e718  RVA=0x04a1e718 [>=esp]
+  stack@0x0cbbfac8  value=0x02a0ede8  RVA=0x0260ede8 [>=esp]
+  stack@0x0cbbfad8  value=0x04e06380  RVA=0x04a06380 [>=esp]
+  stack@0x0cbbfae8  value=0x04e06398  RVA=0x04a06398 [>=esp]
+  stack@0x0cbbfaec  value=0x00ac6589  RVA=0x006c6589 [>=esp]
+  stack@0x0cbbfb40  value=0x007437a9  RVA=0x003437a9 [>=esp]
+  stack@0x0cbbfd4c  value=0x00ac6589  RVA=0x006c6589 [>=esp]
+  stack@0x0cbbfd54  value=0x00826389  RVA=0x00426389 [>=esp]
+  stack@0x0cbbfd60  value=0x0043cbec  RVA=0x0003cbec [>=esp]
+  stack@0x0cbbfd74  value=0x0075045f  RVA=0x0035045f [>=esp]
+  stack@0x0cbbfd88  value=0x00625db5  RVA=0x00225db5 [>=esp]
+  stack@0x0cbbfd9c  value=0x005133c7  RVA=0x001133c7 [>=esp]
+  stack@0x0cbbfdb4  value=0x00561e38  RVA=0x00161e38 [>=esp]
+  stack@0x0cbbfdcc  value=0x0050ed8f  RVA=0x0010ed8f [>=esp]
+  stack@0x0cbbfdd8  value=0x005134d0  RVA=0x001134d0 [>=esp]
+  stack@0x0cbbfdf0  value=0x0050eec1  RVA=0x0010eec1 [>=esp]
+  stack@0x0cbbfe04  value=0x00599ef9  RVA=0x00199ef9 [>=esp]
+  stack@0x0cbbfe18  value=0x009244e6  RVA=0x005244e6 [>=esp]
+  stack@0x0cbbfe28  value=0x005a561d  RVA=0x001a561d [>=esp]
+  stack@0x0cbbfe44  value=0x00ac6589  RVA=0x006c6589 [>=esp]
+  stack@0x0cbbfe4c  value=0x005a5793  RVA=0x001a5793 [>=esp]
+  stack@0x0cbbfe90  value=0x04dd601c  RVA=0x049d601c [>=esp]
+  stack@0x0cbbfe98  value=0x04dd968c  RVA=0x049d968c [>=esp]
+  stack@0x0cbbfea4  value=0x005a89cf  RVA=0x001a89cf [>=esp]
+  stack@0x0cbbfeb0  value=0x005a8b27  RVA=0x001a8b27 [>=esp]
+  stack@0x0cbbfeb4  value=0x0046806f  RVA=0x0006806f [>=esp]
+  stack@0x0cbbfec0  value=0x00406839  RVA=0x00006839 [>=esp]
+  stack@0x0cbbfee0  value=0x00a327a6  RVA=0x006327a6 [>=esp]
+  stack@0x0cbbfef0  value=0x01e44494  RVA=0x01a44494 [>=esp]
+  stack@0x0cbbfef8  value=0x00a1db19  RVA=0x0061db19 [>=esp]
+  stack@0x0cbbff08  value=0x008165ce  RVA=0x004165ce [>=esp]
+  stack@0x0cbbff0c  value=0x00f1de71  RVA=0x00b1de71 [>=esp]
+  stack@0x0cbbff1c  value=0x0081662e  RVA=0x0041662e [>=esp]
+  stack@0x0cbbff34  value=0x00f1de4b  RVA=0x00b1de4b [>=esp]
+  stack@0x0cbbff40  value=0x00f1de71  RVA=0x00b1de71 [>=esp]
+  stack@0x0cbbff5c  value=0x00f1f6f0  RVA=0x00b1f6f0 [>=esp]
+  stack@0x0cbbff6c  value=0x00f1ded5  RVA=0x00b1ded5 [>=esp]
+  stack@0x0cbbff70  value=0x00f1de71  RVA=0x00b1de71 [>=esp]
+  stack@0x0cbbfff4  value=0x00f1de71  RVA=0x00b1de71 [>=esp]
+
+-- TOP ~20 nearest the fault (>=esp, ascending; first are most likely live frames) --
+  stack@0x0cbbf71c  RVA=0x02339d30
+  stack@0x0cbbf720  RVA=0x00b1f6f0
+  stack@0x0cbbf788  RVA=0x000ea700
+  stack@0x0cbbf820  RVA=0x008ccce2
+  stack@0x0cbbf83c  RVA=0x0260ede8
+  stack@0x0cbbf84c  RVA=0x04a06380
+  stack@0x0cbbf85c  RVA=0x04a06398
+  stack@0x0cbbf8bc  RVA=0x003437a9
+  stack@0x0cbbf928  RVA=0x00b1a3a5
+  stack@0x0cbbf9b8  RVA=0x003437a9
+  stack@0x0cbbf9d4  RVA=0x00b1a3a5
+  stack@0x0cbbfab8  RVA=0x04a1e718
+  stack@0x0cbbfac8  RVA=0x0260ede8
+  stack@0x0cbbfad8  RVA=0x04a06380
+  stack@0x0cbbfae8  RVA=0x04a06398
+  stack@0x0cbbfaec  RVA=0x006c6589
+  stack@0x0cbbfb40  RVA=0x003437a9
+  stack@0x0cbbfd4c  RVA=0x006c6589
+  stack@0x0cbbfd54  RVA=0x00426389
+  stack@0x0cbbfd60  RVA=0x0003cbec
+
+-- UNIQUE RVAs (ascending) --
+  RVA=0x02339d30  (va=0x02739d30)
+  RVA=0x00b1f6f0  (va=0x00f1f6f0)
+  RVA=0x000ea700  (va=0x004ea700)
+  RVA=0x008ccce2  (va=0x00cccce2)
+  RVA=0x0260ede8  (va=0x02a0ede8)
+  RVA=0x04a06380  (va=0x04e06380)
+  RVA=0x04a06398  (va=0x04e06398)
+  RVA=0x003437a9  (va=0x007437a9)
+  RVA=0x00b1a3a5  (va=0x00f1a3a5)
+  RVA=0x04a1e718  (va=0x04e1e718)
+  RVA=0x006c6589  (va=0x00ac6589)
+  RVA=0x00426389  (va=0x00826389)
+  RVA=0x0003cbec  (va=0x0043cbec)
+  RVA=0x0035045f  (va=0x0075045f)
+  RVA=0x00225db5  (va=0x00625db5)
+  RVA=0x001133c7  (va=0x005133c7)
+  RVA=0x00161e38  (va=0x00561e38)
+  RVA=0x0010ed8f  (va=0x0050ed8f)
+  RVA=0x001134d0  (va=0x005134d0)
+  RVA=0x0010eec1  (va=0x0050eec1)
+  RVA=0x00199ef9  (va=0x00599ef9)
+  RVA=0x005244e6  (va=0x009244e6)
+  RVA=0x001a561d  (va=0x005a561d)
+  RVA=0x001a5793  (va=0x005a5793)
+  RVA=0x049d601c  (va=0x04dd601c)
+  RVA=0x049d968c  (va=0x04dd968c)
+  RVA=0x001a89cf  (va=0x005a89cf)
+  RVA=0x001a8b27  (va=0x005a8b27)
+  RVA=0x0006806f  (va=0x0046806f)
+  RVA=0x00006839  (va=0x00406839)
+  RVA=0x006327a6  (va=0x00a327a6)
+  RVA=0x01a44494  (va=0x01e44494)
+  RVA=0x0061db19  (va=0x00a1db19)
+  RVA=0x004165ce  (va=0x008165ce)
+  RVA=0x00b1de71  (va=0x00f1de71)
+  RVA=0x0041662e  (va=0x0081662e)
+  RVA=0x00b1de4b  (va=0x00f1de4b)
+  RVA=0x00b1ded5  (va=0x00f1ded5)
+
+---- KNOWN RVA PRESENCE ON FAULTING THREAD STACK ----
+  0x01ac1ad0 (anim-state update (applies request slots)): not found
+  0x01ad9190 (anim request setter): not found
+  0x01785ed0 (NavigateTo): not found
+  0x026e34d8 (crowd behavior vtable): not found
+  0x026fa898 (player behavior vtable): not found
+  0x01e4ce90 (entity vtable area): not found
+
+  fault RVA 0x003437a9 on stack as a value: YES
+
+---- RAW TOP-OF-STACK (from stack_start = esp-4), annotated by module ----
+  0x0cbbf42c [esp-4]  0x7754972c  -> ntdll.dll
+  0x0cbbf430 [esp]  0x77017a4f  -> KERNELBASE.dll
+  0x0cbbf434 [+0x4]  0x00000003
+  0x0cbbf438 [+0x8]  0x0cbbf658
+  0x0cbbf43c [+0xc]  0x00000001
+  0x0cbbf440 [+0x10]  0x00000000
+  0x0cbbf444 [+0x14]  0x00000000
+  0x0cbbf448 [+0x18]  0xf6641379
+  0x0cbbf44c [+0x1c]  0x00000000
+  0x0cbbf450 [+0x20]  0x000008ec
+  0x0cbbf454 [+0x24]  0x000018f8
+  0x0cbbf458 [+0x28]  0x00000024
+  0x0cbbf45c [+0x2c]  0x00000001
+  0x0cbbf460 [+0x30]  0x00000000
+  0x0cbbf464 [+0x34]  0x00000000
+  0x0cbbf468 [+0x38]  0x00000000
+  0x0cbbf46c [+0x3c]  0x00000000
+  0x0cbbf470 [+0x40]  0x00000000
+  0x0cbbf474 [+0x44]  0x00000000
+  0x0cbbf478 [+0x48]  0x00000000
+  0x0cbbf47c [+0x4c]  0x00000000
+  0x0cbbf480 [+0x50]  0x00000003
+  0x0cbbf484 [+0x54]  0x00000000
+  0x0cbbf488 [+0x58]  0x00000000
+  0x0cbbf48c [+0x5c]  0x00000000
+  0x0cbbf490 [+0x60]  0x00000000
+  0x0cbbf494 [+0x64]  0x0cbbf658
+  0x0cbbf498 [+0x68]  0x00208000
+  0x0cbbf49c [+0x6c]  0x00000000
+  0x0cbbf4a0 [+0x70]  0x00000000
+  0x0cbbf4a4 [+0x74]  0x00000000
+  0x0cbbf4a8 [+0x78]  0x00000000
+  0x0cbbf4ac [+0x7c]  0x00000000
+  0x0cbbf4b0 [+0x80]  0x00000000
+  0x0cbbf4b4 [+0x84]  0x00000000
+  0x0cbbf4b8 [+0x88]  0x00000000
+  0x0cbbf4bc [+0x8c]  0x00000000
+  0x0cbbf4c0 [+0x90]  0x00000000
+  0x0cbbf4c4 [+0x94]  0x00000000
+  0x0cbbf4c8 [+0x98]  0x00000000
+  0x0cbbf4cc [+0x9c]  0x00000000
+  0x0cbbf4d0 [+0xa0]  0x00000000
+  0x0cbbf4d4 [+0xa4]  0x00000000
+  0x0cbbf4d8 [+0xa8]  0x00000000
+  0x0cbbf4dc [+0xac]  0x00000000
+  0x0cbbf4e0 [+0xb0]  0x00000000
+  0x0cbbf4e4 [+0xb4]  0x00000000
+  0x0cbbf4e8 [+0xb8]  0x00000000
+  0x0cbbf4ec [+0xbc]  0x00000000
+  0x0cbbf4f0 [+0xc0]  0x00000000
+  0x0cbbf4f4 [+0xc4]  0x00000000
+  0x0cbbf4f8 [+0xc8]  0x00000000
+  0x0cbbf4fc [+0xcc]  0x00000000
+  0x0cbbf500 [+0xd0]  0x00000000
+  0x0cbbf504 [+0xd4]  0x00000000
+  0x0cbbf508 [+0xd8]  0x00000000
+  0x0cbbf50c [+0xdc]  0x00000000
+  0x0cbbf510 [+0xe0]  0x00000000
+  0x0cbbf514 [+0xe4]  0x00000000
+  0x0cbbf518 [+0xe8]  0x00000000
+  0x0cbbf51c [+0xec]  0x00000000
+  0x0cbbf520 [+0xf0]  0x00000000
+  0x0cbbf524 [+0xf4]  0x00000000
+  0x0cbbf528 [+0xf8]  0x00000000
+  0x0cbbf52c [+0xfc]  0x00000000
+  0x0cbbf530 [+0x100]  0x00000000
+  0x0cbbf534 [+0x104]  0x00000000
+  0x0cbbf538 [+0x108]  0x00000000
+  0x0cbbf53c [+0x10c]  0x00000000
+  0x0cbbf540 [+0x110]  0x00000000
+  0x0cbbf544 [+0x114]  0x00000000
+  0x0cbbf548 [+0x118]  0x00000000
+
+---- FRAME POINTER WALK (from CONTEXT EBP/ESP) ----
+CONTEXT EIP=0x007437a9 EBP=0x0cbbfd70 ESP=0x0cbbfd68
+frame 0 (faulting fn)  EIP=0x007437a9  RVA=0x003437a9  [fn entry RVA 0x3437a0]
+  frame 1: ret=0x0075045f  -> AC4BFSP.exe RVA 0x0035045f   (saved ebp=0x0cbbfd84)
+  frame 2: ret=0x00625db5  -> AC4BFSP.exe RVA 0x00225db5   (saved ebp=0x0cbbfd98)
+  frame 3: ret=0x005133c7  -> AC4BFSP.exe RVA 0x001133c7   (saved ebp=0x0cbbfdb0)
+  frame 4: ret=0x00561e38  -> AC4BFSP.exe RVA 0x00161e38   (saved ebp=0x0cbbfdd4)
+  frame 5: ret=0x005134d0  -> AC4BFSP.exe RVA 0x001134d0   (saved ebp=0x0cbbfdec)
+  frame 6: ret=0x0050eec1  -> AC4BFSP.exe RVA 0x0010eec1   (saved ebp=0x0cbbfe00)
+  frame 7: ret=0x00599ef9  -> AC4BFSP.exe RVA 0x00199ef9   (saved ebp=0x0cbbfe24)
+  frame 8: ret=0x005a561d  -> AC4BFSP.exe RVA 0x001a561d   (saved ebp=0x0cbbfe48)
+  frame 9: ret=0x005a5793  -> AC4BFSP.exe RVA 0x001a5793   (saved ebp=0x0cbbfea0)
+  frame 10: ret=0x005a89cf  -> AC4BFSP.exe RVA 0x001a89cf   (saved ebp=0x0cbbfedc)
+  frame 11: ret=0x00a327a6  -> AC4BFSP.exe RVA 0x006327a6   (saved ebp=0x0cbbfef4)
+  frame 12: ret=0x00a1db19  -> AC4BFSP.exe RVA 0x0061db19   (saved ebp=0x0cbbff04)
+  frame 13: ret=0x008165ce  -> AC4BFSP.exe RVA 0x004165ce   (saved ebp=0x0cbbff18)
+  frame 14: ret=0x0081662e  -> AC4BFSP.exe RVA 0x0041662e   (saved ebp=0x0cbbff30)
+  frame 15: ret=0x00f1de4b  -> AC4BFSP.exe RVA 0x00b1de4b   (saved ebp=0x0cbbff68)
+  frame 16: ret=0x00f1ded5  -> AC4BFSP.exe RVA 0x00b1ded5   (saved ebp=0x0cbbff74)
+  frame 17: ret=0x76b15d49  -> kernel32.dll   (saved ebp=0x0cbbff84)
+  frame 18: ret=0x7753d81b  -> ntdll.dll   (saved ebp=0x0cbbffdc)
+  frame 19: ret=0x7753d7a1  -> ntdll.dll   (saved ebp=0x0cbbffec)
+  frame 20: ret=0x00000000   (saved ebp=0x00000000)
+
+---- DISASSEMBLY AROUND FAULT RVA 0x003437a9 ----
+exe ImageBase=0x00400000
+  section .text    va=0x00401000 vsize=0x1a389f2 raw=0x400 rawsize=0x1a38a00
+  section .rdata   va=0x01e3a000 vsize=0x90874a raw=0x1a38e00 rawsize=0x908800
+  section .data    va=0x02743000 vsize=0x26fefe0 raw=0x2341600 rawsize=0x37aa00
+  section .shared  va=0x04e42000 vsize=0x4001c raw=0x26bc000 rawsize=0x40200
+  section .tls     va=0x04e83000 vsize=0x89 raw=0x26fc200 rawsize=0x200
+  section .rsrc    va=0x04e84000 vsize=0x3f98d8 raw=0x26fc400 rawsize=0x3f9a00
+file offset for RVA 0x00343769 = 0x342b69
+  0x00743769 (RVA 0x00343769)  adc      ecx, dword ptr [ebx - 0x22a11feb]
+  0x0074376f (RVA 0x0034376f)  add      al, 0x6a
+  0x00743771 (RVA 0x00343771)  add      byte ptr [edx + 0x6a], dl
+  0x00743774 (RVA 0x00343774)  add      al, 0x51
+  0x00743776 (RVA 0x00343776)  mov      ecx, esi
+  0x00743778 (RVA 0x00343778)  call     0xa09ab0
+  0x0074377d (RVA 0x0034377d)  movzx    eax, word ptr [esi + 6]
+  0x00743781 (RVA 0x00343781)  mov      ecx, dword ptr [esi]
+  0x00743783 (RVA 0x00343783)  inc      eax
+  0x00743784 (RVA 0x00343784)  mov      word ptr [esi + 6], ax
+  0x00743788 (RVA 0x00343788)  mov      dword ptr [ecx + eax*4 - 4], 0x1a
+  0x00743790 (RVA 0x00343790)  pop      edi
+  0x00743791 (RVA 0x00343791)  pop      esi
+  0x00743792 (RVA 0x00343792)  pop      ebp
+  0x00743793 (RVA 0x00343793)  ret      4
+  0x00743796 (RVA 0x00343796)  int3     
+  0x00743797 (RVA 0x00343797)  int3     
+  0x00743798 (RVA 0x00343798)  int3     
+  0x00743799 (RVA 0x00343799)  int3     
+  0x0074379a (RVA 0x0034379a)  int3     
+  0x0074379b (RVA 0x0034379b)  int3     
+  0x0074379c (RVA 0x0034379c)  int3     
+  0x0074379d (RVA 0x0034379d)  int3     
+  0x0074379e (RVA 0x0034379e)  int3     
+  0x0074379f (RVA 0x0034379f)  int3     
+  0x007437a0 (RVA 0x003437a0)  push     ebp
+  0x007437a1 (RVA 0x003437a1)  mov      ebp, esp
+  0x007437a3 (RVA 0x003437a3)  sub      esp, 8
+  0x007437a6 (RVA 0x003437a6)  mov      edx, dword ptr [ecx + 0x2c]
+  0x007437a9 (RVA 0x003437a9)  mov      eax, dword ptr [edx + 8]  <==== FAULTING INSTRUCTION
+  0x007437ac (RVA 0x003437ac)  push     esi
+  0x007437ad (RVA 0x003437ad)  mov      esi, dword ptr [ebp + 8]
+  0x007437b0 (RVA 0x003437b0)  push     edi
+  0x007437b1 (RVA 0x003437b1)  lea      edi, [ecx + 0x2c]
+  0x007437b4 (RVA 0x003437b4)  sar      eax, 0x1f
+  0x007437b7 (RVA 0x003437b7)  and      eax, dword ptr [edx]
+  0x007437b9 (RVA 0x003437b9)  mov      dword ptr [ebp - 4], ecx
+  0x007437bc (RVA 0x003437bc)  cmp      esi, eax
+  0x007437be (RVA 0x003437be)  je       0x743884
+  0x007437c4 (RVA 0x003437c4)  test     eax, eax
+  0x007437c6 (RVA 0x003437c6)  je       0x7437d5
+  0x007437c8 (RVA 0x003437c8)  mov      edx, dword ptr [eax]
+  0x007437ca (RVA 0x003437ca)  push     ecx
+  0x007437cb (RVA 0x003437cb)  mov      ecx, eax
+  0x007437cd (RVA 0x003437cd)  mov      eax, dword ptr [edx + 0x130]
+  0x007437d3 (RVA 0x003437d3)  call     eax
+  0x007437d5 (RVA 0x003437d5)  push     ebx
+  0x007437d6 (RVA 0x003437d6)  push     esi
+  0x007437d7 (RVA 0x003437d7)  push     0
+  0x007437d9 (RVA 0x003437d9)  push     0
+  0x007437db (RVA 0x003437db)  mov      ecx, 0x4dd5fa0
+  0x007437e0 (RVA 0x003437e0)  call     0xa0bde0
+  0x007437e5 (RVA 0x003437e5)  mov      esi, eax

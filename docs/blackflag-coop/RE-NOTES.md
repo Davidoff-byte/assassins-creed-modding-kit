@@ -47,6 +47,69 @@ Base addresses: both are x86, image base `0x400000` (confirmed in-game).
 >    63M forge TOC names + 45M content strings + exe strings + variants = ZERO matches; the
 >    hash-reverse hunt is CLOSED).
 >
+> **2026-10-08 UPDATE — the clone/duplicate arc (supersedes parts of "CREATION = CLOSED"):**
+>  - **Class map nailed** by full-memory class-id resolution: vt `0x1E4CE90` = class **"Entity"**
+>    (`0x0984415E`) — 2788 instances = ALL body nodes INCLUDING the player's own (find_player_ctl's
+>    node). vt `0x1E4A128` = **"EntityGroup"** (`0x3F742D26`) — the old "character candidates"
+>    were EntityGroups (their +0xC = FUN_00503600 deep copy; calling it as a clone = the historic
+>    AVs). vt `0x1E64680` = class `0x2F4222CA` with the COMPLETE clone (sync FUN_006deff0 / async
+>    FUN_006def40) — **no live instances** (decoy/mission-only).
+>  - **The node clone** = `Entity vtable+0xC = FUN_0052A980` (instantiate via desc 0x275E670 +
+>    recursive child clone FUN_00a27550 + job post 0x27F6A44). LIVE-PROVEN: returns a real node
+>    on crowd bodies (rc=0, stable 10 s+); AVs on stale ones and on the PLAYER's node.
+>    **The copy is INVISIBLE: a raw node copy has NO GRAPHICS** — the visual is built at spawn by
+>    the graphic-instance factory (the parked outfit path). Unregistered copies also get freed by
+>    the engine eventually (the pin tech exists to prevent that).
+>  - **Streamer spawn** `FUN_005FD730(hash)` decoded: fast path = template-handle poll; slow path
+>    = clone-the-template (vt+0xC) + activate (`FUN_00526590` flags+spatial) + flush
+>    (`FUN_00a2e820`). Calls with our hashes return 0 (template-handle validity fails at call
+>    time); SpawnWatch captures live per-area template hashes (e.g. 0x47CD5ECC, 0x479DB35C).
+>  - **THE QUEUED TEST (built, not yet run)** — the ASYNC clone (`Entity vt+0x8` = serialize +
+>    engine-side deserialize = the documented render-safe path). Shipped as CloneLive v5
+>    (non-player sources get a +3 m offset spot trick; post-scan finds the copy; move+activate+
+>    flush). Procedure: close game -> deploy latest `build-x86` asi -> in-world -> CloneLive=true.
+>  - **Freeze fix shipped 2026-10-08:** the act-controller rescan stalled the game ~3 s every
+>    ~10 s (and scan-stormed at menus — likely behind the recurring nvwgf2um driver crashes).
+>    Fixed (no periodic rescans + 3-20 s backoff + two-pass scan). User-verified: "game feels fine".
+>  - **Live verdict 2026-10-08 ~19:01 (build 3B713A6D, live game):** all three clone rungs x 10 candidates:
+>    player body = all fail; 9/10 crowd bodies = all fail (SYNCCLONE/DEEPCOPY rc=1 = SEH, ASYNC AV);
+>    ONE success -> object vt `0x1E64680` = **WorldEntityGroup** (name resolved) = a group CONTAINER;
+>    persisted 105 s (not freed). Live memory dump vs source body: node fields copied, but graphic/scene
+>    slots `+0xAC/+0xB0/+0xD4` = 0 and controller `+0xE8` = 0, `+0x50` = static default definition ->
+>    **invisible shell; memory-copy CANNOT produce a rendered body.** Renderable bodies = engine spawn/
+>    streamer pipeline only (same conclusion as Skyrim Together's design; see logs/ai/SKYRIM-TOGETHER-LESSONS.md).
+>  - **SpawnTest replay ret=0 live:** replaying the engine's own (mgr, key-ptr) 2 min after capture fails
+>    (transient key) -> next: capture key CONTENTS + args + caller RVA, replay a reconstructed key.
+>  - **NavTest live:** picker's "speed" field = garbage (picked 211 m/s); attempts rc=3 (idle gate) ->
+>    rc=0 (accept) -> no movement. Next: position-delta mover detection.
+>  - Class names: `0x2F4222CA` = **WorldEntityGroup** (sync-clone class), `0x0984415E` = Entity,
+>    `0x3F742D26` = EntityGroup, `0x406089A4` = Action. Behavior classes = non-CRC id scheme (mixed).
+>
+> **2026-10-09 UPDATE — the body problem solved differently: shells dead -> keyed characters -> forge reskin.**
+>  - **Shell/adopt route CLOSED (falsified):** the world load only find-or-creates MISSING keys — a live
+>    planted shell makes the load skip the key entirely (the sniper shell never got a single LOAD HIT
+>    across a save load + round trip). Earlier "adoptions" were heap block reuse. Plant count also
+>    destabilizes load-end (29 shells -> deterministic +0x4C10BA crash; <=8 survive). Do NOT retry planting.
+>  - **Keyed persistent characters FOUND (the partner frame):** the Havana docks hold persistent keyed
+>    NPCs rebuilt every load: key `(0xF00056E0,0)` -> entity `0x45B497A0` @ (111,-66); key `(0xF000570A,0)`
+>    -> entity `0x460F4610` @ (109,-73). World key->entity registry walkable: find the 8-byte (lo,hi) pair,
+>    entry base = pair-0xC = {ptr, rc, flags(0x8000000x), keyLo, keyHi}, stride 0x14.
+>  - **Forge def-redirect = the ACTIVE route (user: "if we can write, we write"):** mod9 = mod7 +
+>    `CHR_C_M_Spanish_Medium/Poors/Rich` (Havana street/dock folk) -> private copies of
+>    **`CHR_P_EdwardKenway_Walpole`** (Edward in the Walpole-disguise robes; id-hash patched per target).
+>    Deployed to the game (MD5 `C641619371A42C160E69C391C7F7E82F`), AdoptTest=false, relaunched.
+>    Fallbacks in D:\bf4_mod: mod8 (same targets, Duncan source), mod7, pristine original.
+>  - **Directive:** this is the big co-op addition (Skyrim Together scale) — keep writing forward.
+>  - **SUPERSEDED (10-09):** dock folk were confirmed as Edward (mod15 keeper) and the full drive pipeline went
+>    live end-to-end (peer -> handshake -> targeted pick -> despawn pin -> per-frame drive, err = 0.00 m).
+>    The current open item is the crowd ANIMATION play side (update below).
+>  - **2026-10-09 (evening) B4 play-side UPDATE - the two sides are different classes; walk-state regions + the state machine located.**
+>    - Player vocabulary captured live (read-only v21 probes): run a=0x48 e=1 c=0x57; climb d=0x83/0x07; idle c=0x3F d=0x2A; request slots stay -1; 6-tuple surface confirmed (a->+0x8D4 blend, c->+0x8D8 hang, d->+0x8E0 phase, e/f bytes).
+>    - The ghost (crowd class, vt 0x026E34D8) does NOT share the player layout at +0x8D0 (player = scalars; crowd = pointers/mixed - this is the crash RCA). Never value-copy between the classes.
+>    - Read-only walk-vs-stand diff: 349 offsets change walking / 0 standing. Candidates: ctl+0x26E0.., ctl+0x28F0.. (double-buffered swap pairs in FUN_00d7e290), ent+0x74.., ent+0xB4/0xB8.
+>    - Crash chain = the state machine: FUN_00513360 -> vt+0x94 -> FUN_00625D70 -> FUN_00750440 -> FUN_007437A0 = refcounted state-object swap at controller+0x2C (abs +0x8DC - the field the raw write clobbered).
+>    - NEXT: read-only hooks on the swap chain + staging writers while a verified NPC walks; drive the ghost via the engine path only.
+>
 > **TOOLING (2026-10-07):** QuickBMS (`bf-coop/tools/bms/`) + `scimitar_alt.bms` (RetingencyPlan
 > compendium) extracts AC4 forges; reimport2 verified (SAME-SIZE swaps only — the forge offset
 > table is not rewritten; pad replacements to the exact slot length). ALL ~25 forges extracted to

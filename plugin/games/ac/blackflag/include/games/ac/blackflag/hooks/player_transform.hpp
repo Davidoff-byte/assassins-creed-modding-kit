@@ -95,8 +95,13 @@ namespace hooks {
             ini_field<int, bf_coop_int_parser> body_min_children {"Coop", "BodyMinChildren", 16};
             ini_field<int, bf_coop_int_parser> body_max_dist {"Coop", "BodyMaxDist", 200};
             ini_field<bool> clone_test {"Coop", "CloneTest", false};
+            ini_field<bool> clone_live {"Coop", "CloneLive", false}; // dev one-shot: clone the player's character object (visibility test)
+            ini_field<bool> spawn_test {"Coop", "SpawnTest", false}; // dev one-shot: call the streamer spawn (crowd template hash)
+            ini_field<bool> spawn_watch {"Coop", "SpawnWatch", false}; // dev: capture streamer spawn template hashes (read-only hook)
+            bf_coop_string_field spawn_hash {"Coop", "SpawnHash", "47CD5ECC"}; // hex template hash for SpawnTest
             ini_field<bool> cull_watch {"Coop", "CullWatch", false}; // P1 oracle: sample the ghost body's lifecycle fields
             ini_field<bool> anim_drive {"Coop", "AnimDrive", false}; // P3: replay the peer's action state on the ghost
+            ini_field<bool> anim_probe {"Coop", "AnimProbe", false}; // read-only: map the ghost body's real animation objects
             ini_field<bool>  marker_enabled {"Coop", "MarkerEnabled", false}; // P2: partner marker overlay
             ini_field<float> marker_fov {"Coop", "MarkerFov", 55.0F};         // vertical FOV for the projection
             ini_field<float> marker_size {"Coop", "MarkerSize", 16.0F};       // marker half-size, px
@@ -105,8 +110,15 @@ namespace hooks {
             ini_field<bool>  probe_damage {"Coop", "ProbeDamage", false};     // dev: log health-setter calls (damage-path hunt)
             ini_field<bool>  combat_sync {"Coop", "CombatSync", false};       // P4: NPC health watch + damage/kill apply
             ini_field<bool>  combat_kill_test {"Coop", "CombatKillTest", false}; // dev: one-shot kill via the engine setter
+            ini_field<bool>  nav_test {"Coop", "NavTest", false}; // dev one-shot: navigate a nearby NPC via CSrvNavigation::NavigateTo
+            ini_field<bool>  nav_watch {"Coop", "NavWatch", false}; // dev: capture real NavigateTo traffic (read-only hooks)
+            ini_field<bool>  adopt_test {"Coop", "AdoptTest", false}; // v19 dev one-shot: pre-place shells at the previous region's keys
+            ini_field<bool>  act_scan {"PlayerTransform", "ActScan", false}; // v19.2: allow the act-ctl rescan (~3 s freeze per pass; off)
+            bf_coop_string_field adopt_only {"Coop", "AdoptOnly", ""}; // v19.3: plant ONLY this key ("LLLLLLLL:HHHHHHHH")
+            bf_coop_string_field adopt_skip {"Coop", "AdoptSkip", ""}; // v19.3: never plant this key ("LLLLLLLL:HHHHHHHH")
+            ini_field<int, bf_coop_int_parser> adopt_max {"Coop", "AdoptMax", 0}; // v19.3: cap planted count (0 = default)
 
-            static constexpr std::size_t field_count = 26;
+            static constexpr std::size_t field_count = 38;
             static constexpr auto        field_ptrs  = std::tuple {
                 &Config::log_hz,
                 &Config::coop_enabled,
@@ -124,8 +136,13 @@ namespace hooks {
                 &Config::body_min_children,
                 &Config::body_max_dist,
                 &Config::clone_test,
+                &Config::clone_live,
+                &Config::spawn_test,
+                &Config::spawn_watch,
+                &Config::spawn_hash,
                 &Config::cull_watch,
                 &Config::anim_drive,
+                &Config::anim_probe,
                 &Config::marker_enabled,
                 &Config::marker_fov,
                 &Config::marker_size,
@@ -134,6 +151,13 @@ namespace hooks {
                 &Config::probe_damage,
                 &Config::combat_sync,
                 &Config::combat_kill_test,
+                &Config::nav_test,
+                &Config::nav_watch,
+                &Config::adopt_test,
+                &Config::act_scan,
+                &Config::adopt_only,
+                &Config::adopt_skip,
+                &Config::adopt_max,
             };
         };
 

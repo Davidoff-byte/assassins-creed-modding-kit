@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -21,6 +22,7 @@
 #include "games/ac/blackflag/coop/combat_sync.hpp"
 #include "games/ac/blackflag/coop/coop_net.hpp"
 #include "games/ac/blackflag/coop/ghost_body.hpp"
+#include "games/ac/blackflag/coop/nav_drive.hpp"
 #include "games/ac/blackflag/coop/overlay.hpp"
 #include "games/ac/blackflag/registry.hpp"
 
@@ -58,10 +60,66 @@ namespace hooks {
 #pragma clang diagnostic ignored "-Wexit-time-destructors"
 #pragma clang diagnostic ignored "-Wglobal-constructors"
         std::atomic<float>        g_log_hz {2.0F};
+        std::atomic<bool>         g_act_scan_allowed {false}; // v19.2: [PlayerTransform] ActScan
+        std::atomic<std::uint32_t> g_adopt_only_lo {0}; // v19.3 knobs
+        std::atomic<std::uint32_t> g_adopt_only_hi {0};
+        std::atomic<std::uint32_t> g_adopt_skip_lo {0};
+        std::atomic<std::uint32_t> g_adopt_skip_hi {0};
+        std::atomic<int>           g_adopt_max {0};
         std::atomic<std::int64_t> g_qpc_freq {0};
         std::atomic<std::int64_t> g_last_log {0};
         std::atomic<int>          g_spawn_logs {0};
         std::atomic<int>          g_new_logs {0};
+
+        // v10 AllocTrace: unique (class-ctor, caller) pairs seen by the alloc probe. Maps the
+        // complete object-creation call graph; the Entity body ctor (0x52B750, desc 0x2760EF0)
+        // reveals the character-creating call sites.
+        struct AllocPair {
+            std::uint32_t ctor = 0;
+            std::uint32_t ret = 0;
+            std::uint32_t desc = 0;
+            std::uint32_t count = 0;
+        };
+        AllocPair        g_alloc_pairs[768];
+        std::atomic<int> g_alloc_pair_n {0};
+        std::atomic<int> g_mass_logs {0};
+        std::atomic<int> g_entctor_logs {0};
+        std::atomic<int> g_node_logs {0};
+        std::atomic<std::uint32_t> g_last_ent_key_lo {0};
+        std::atomic<std::uint32_t> g_last_ent_key_hi {0};
+        std::atomic<int>           g_ent_key_count {0};
+        std::uint32_t              g_ent_keys_lo[128] = {};
+        std::uint32_t              g_ent_keys_hi[128] = {};
+        std::atomic<std::uint32_t> g_last_registry {0}; // v14: the registry (ECX at mass-create)
+
+        // v19 AdoptTest: full key history per load burst (a region load = ~1772 Entity keys).
+        // A shell pre-placed at a key of an UNLOADED region may be adopted by that region's next
+        // load through the same find-or-create the world itself uses - converting a runtime-created
+        // object into a stream-owned one.
+        struct AdoptKey {
+            std::uint32_t lo    = 0;
+            std::uint32_t hi    = 0;
+            std::uint32_t burst = 0;
+        };
+        AdoptKey                   g_adopt_keys[8192];
+        std::atomic<int>           g_adopt_key_n {0};
+        std::atomic<std::uint32_t> g_adopt_burst {0};
+        std::atomic<std::uint64_t> g_adopt_burst_last {0}; // GetTickCount64 of the last key
+        std::uint32_t              g_adopt_burst_count[128] = {};
+        std::uint32_t              g_adopt_burst_first_lo[128] = {};
+        std::uint32_t              g_adopt_burst_first_hi[128] = {};
+        std::atomic<std::uint32_t> g_adopt_logged_burst {0};
+        std::atomic<bool>          g_adopt_test {false};
+        bool                       g_adopt_armed = false;
+        bool                       g_adopt_created = false;
+        std::uintptr_t             g_adopt_shells[32] = {};
+        std::uint32_t              g_adopt_shell_lo[32] = {};
+        std::uint32_t              g_adopt_shell_hi[32] = {};
+        std::uint32_t              g_adopt_shell_state[32] = {};
+        int                        g_adopt_shell_n = 0;
+        int                        g_adopt_watch_logs = 0;
+        std::uintptr_t             g_adopt_deliver_target = 0;
+        int                        g_adopt_deliver_tries = 0;
         mem::MidHook              g_hook;
         mem::MidHook              g_probe;
         mem::MidHook              g_probe_new;
@@ -70,26 +128,42 @@ namespace hooks {
         mem::MidHook              g_probe_jobdesc;
         mem::MidHook              g_probe_jobctx;
         mem::MidHook              g_probe_alloc;
+        mem::MidHook              g_probe_inst; // v10: generic instantiate probe (FUN_00a359c0)
+        mem::MidHook              g_probe_entctor; // v11: Entity ctor 0x52B750 (desc 0x2760EF0)
         mem::MidHook              g_probe_copy;
         mem::MidHook              g_probe_spawnapi;
         mem::MidHook              g_probe_spawnret;
         mem::MidHook              g_probe_masscreate;
+        mem::MidHook              g_probe_reqwatch; // v20: animation-request setter watch (FUN_01ad9190)
         mem::MidHook              g_probe_setlife;
         mem::MidHook              g_probe_setlife_n;
         mem::MidHook              g_probe_msg_a;
         mem::MidHook              g_probe_msg_b;
+        mem::MidHook              g_probe_animapply; // v21: animation-apply probe (FUN_01ac1ad0)
+        mem::MidHook              g_probe_animwrite; // v21: animation-write probe (FUN_01b52c0)
         std::atomic<int>          g_dmg_probe_logs {0};
         std::atomic<bool>         g_world_seen {false};
         std::atomic<bool>         g_spawn_capture {false};
+        std::uintptr_t            g_spawnq_obj = 0; // v16.5: last spawned object (watch + source guard)
+        std::uintptr_t            g_v16_obj = 0;    // v16.5: pending graphics attach target
+        std::uintptr_t            g_hswap_clone = 0; // v18: record-handle share target
+        bool                      g_hswap_done = true;
+        std::uintptr_t            g_hswap_cursor = 0;
         std::uintptr_t            g_jobenq_addr = 0;
         std::uintptr_t            g_exe_base    = 0;
         Vec3                      g_last_pos {0.0F, 0.0F, 0.0F};
+        std::int64_t              g_last_pos_t0 = 0; // QPC of the last valid g_last_pos update
         Vec4                      g_last_quat {0.0F, 0.0F, 0.0F, 1.0F};
 
         static DWORD WINAPI replay_thread(LPVOID); // defined below (spawn replay)
 
         static std::uintptr_t registry_find_helper(std::uintptr_t fn, std::uint32_t k1,
                                                    std::uint32_t k2); // defined below
+        static std::uintptr_t registry_find2(std::uintptr_t fn, std::uint32_t reg, std::uint32_t k1,
+                                             std::uint32_t k2); // v14
+        static void          *spawn_keyed2(std::uintptr_t fn, std::uint32_t reg, std::uint32_t id,
+                                           std::uint32_t k1, std::uint32_t k2); // v14
+        static int spawn_reg_helper(std::uintptr_t fn, std::uintptr_t entity); // v15
 #pragma clang diagnostic pop
 
         // True only if [addr, addr+size) is all committed and readable.
@@ -156,9 +230,10 @@ namespace hooks {
         std::uintptr_t g_act_ctl      = 0;
         std::uintptr_t g_act_node     = 0;
         std::int64_t   g_act_last_qpc = 0;
+        std::uint32_t  g_act_fail_count = 0; // consecutive failed controller scans (backoff)
         std::atomic<std::int64_t> g_load_qpc {0};
         std::uint32_t  g_last_anim_state = 0;
-        bool           g_act_read_enabled = false; // TODO: re-enable with incremental scan + backoff
+        bool           g_act_read_enabled = true; // re-enabled: refresh_act_ctl caches + rescans on backoff
 
         // --- StateProbe: read-only locomotion-state sampler (parkour/animation sync research) ---
         // Logs the player controller's state bytes (+0x8D0..0x8E8) and +0x138 whenever they
@@ -512,6 +587,1002 @@ namespace hooks {
             }
         }
 
+        // === CloneLive (dev one-shot, 2026-10-08): the never-run visibility test for the sync
+        // clone. Finds the player's character-class object (vt 0x01E4A128 / 0x01E64680 - the
+        // "1-3 cloneable" objects = player + story NPCs), calls the proven clone slot
+        // (vtable+0xC = FUN_006deff0), logs a source-vs-clone field diff, then the user walks
+        // away and looks back: does a second body stand where they were?
+        std::atomic<bool> g_clone_live {false};
+        int              g_clone_live_stage  = 0; // 0 idle/armed, 1 scan, 2 clone, 3 recheck, 4 done
+        std::uintptr_t   g_clone_live_cursor = 0;
+        std::uintptr_t   g_clone_live_src    = 0;
+        std::uintptr_t   g_clone_live_obj    = 0;
+        float            g_clone_live_bestd  = 1.0e9F;
+        std::int64_t     g_clone_live_t0     = 0;
+
+        static void clone_live_fields(const char *tag, std::uintptr_t b) {
+            if (!readable(b, 0x60)) {
+                log::get()->info("{} 0x{:X}: unreadable", tag, b);
+                return;
+            }
+            log::get()->info(
+                "{} 0x{:X}: vt=0x{:X} ch={} f7c={:.2f} f50=0x{:X} f54=0x{:X} f58=0x{:X} "
+                "f5C=0x{:X} f60=0x{:X}",
+                tag, b, static_cast<std::uintptr_t>(mem::read<std::uint32_t>(b)),
+                mem::read<std::uint16_t>(b + 0x66), static_cast<double>(mem::read<float>(b + 0x7C)),
+                mem::read<std::uint32_t>(b + 0x50), mem::read<std::uint32_t>(b + 0x54),
+                mem::read<std::uint32_t>(b + 0x58), mem::read<std::uint32_t>(b + 0x5C),
+                mem::read<std::uint32_t>(b + 0x60));
+        }
+
+        struct CloneLiveCand {
+            std::uintptr_t addr = 0;
+            std::uint32_t  vt   = 0;
+            float          x    = 0.0F;
+            float          y    = 0.0F;
+            float          d    = 0.0F;
+            std::uint16_t  ch   = 0;
+            float          f7c  = 0.0F;
+            std::uint32_t  f50  = 0;
+        };
+        CloneLiveCand g_clone_live_cands[32];
+        int           g_clone_live_cand_n = 0;
+        int           g_clone_live_try    = 0; // next attempt index into the sorted order
+        std::int64_t  g_clone_live_gap    = 0; // pacing between clone attempts
+        bool          g_clone_live_scan_ran = false;
+
+        // v4: scan for ENTITY BODIES (vt 0x01E4CE90 = class "Entity" - the bodies, incl. the
+        // player's). Their vtable+0xC = FUN_0052A980 = the node clone (instantiate + deep copy),
+        // the same primitive the streamer uses to create nodes during gameplay.
+        std::uintptr_t g_clone_live_ghost = 0;
+
+        static void clone_live_scan(std::uintptr_t lo, std::uintptr_t hi, const Vec3 &player) {
+            __try {
+                for (auto p = lo; p + 4 <= hi; p += 4) {
+                    if (g_clone_live_cand_n >= 32) {
+                        break;
+                    }
+                    const auto vt = mem::read<std::uint32_t>(p);
+                    if (vt != 0x01E4CE90U) {
+                        continue;
+                    }
+                    if (p == g_clone_live_ghost) {
+                        continue; // never clone the pinned ghost
+                    }
+                    const auto ch = readable(p + 0x66, 2) ? mem::read<std::uint16_t>(p + 0x66) : 0;
+                    if (ch < 16) {
+                        continue; // real bodies only
+                    }
+                    float bx = 0.0F;
+                    float by = 0.0F;
+                    if (readable(p + 0x40, 8)) {
+                        bx = mem::read<float>(p + 0x40);
+                        by = mem::read<float>(p + 0x44);
+                    }
+                    if (!(bx > -20000.0F && bx < 20000.0F && by > -20000.0F && by < 20000.0F)) {
+                        continue;
+                    }
+                    const auto dx = bx - player.x;
+                    const auto dy = by - player.y;
+                    auto      &c  = g_clone_live_cands[g_clone_live_cand_n++];
+                    c.addr = p;
+                    c.vt   = vt;
+                    c.x    = bx;
+                    c.y    = by;
+                    c.d    = std::sqrt(dx * dx + dy * dy);
+                    c.ch   = static_cast<std::uint16_t>(ch);
+                    c.f7c  = readable(p + 0x7C, 4) ? mem::read<float>(p + 0x7C) : 0.0F;
+                    c.f50  = readable(p + 0x50, 4) ? mem::read<std::uint32_t>(p + 0x50) : 0;
+                }
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+            }
+        }
+
+        // Order attempts: healthy-looking (children > 0) first, then by distance.
+        int g_clone_live_order[32];
+
+        static auto clone_live_score(const CloneLiveCand &c) -> float {
+            return c.d - (c.ch > 0 ? 1.0e6F : 0.0F);
+        }
+
+        // The streamer's spawn completion (from the crowd spawn recipe): activate = set flags
+        // +0x50 |= 4|8|0x800000 then register spatially; job flush = process the posted job.
+        static int activate_helper(std::uintptr_t node) {
+            __try {
+                using ActFn = void(__thiscall *)(void *);
+                reinterpret_cast<ActFn>(g_exe_base + 0x126590)(reinterpret_cast<void *>(node));
+                return 0;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        static int jobflush_helper() {
+            __try {
+                using FlushFn = void(__cdecl *)();
+                reinterpret_cast<FlushFn>(g_exe_base + 0x62E820)();
+                return 0;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        // === SpawnTest (dev one-shot): call the streamer's own spawn with the captured crowd
+        // template hash - the exact mid-game NPC creation path the engine uses itself.
+        // FUN_005FD730(hash) stdcall -> new node (template slot -> vtable+0xC clone ->
+        // FUN_00526590 activate -> FUN_00a2e820 flush).
+        std::atomic<bool> g_spawn_test {false};
+        bool              g_spawn_test_done = false;
+        std::atomic<int>  g_spawnwatch_logs {0};
+
+        static void *spawn_hash_helper(std::uint32_t mgr, std::uint32_t key) {
+            __try {
+                // FUN_005FD730 is __thiscall: ECX = the spawn manager, the key pointer on the
+                // stack (ret 4). Earlier attempts passed a garbage ECX -> lookup always failed.
+                using SpawnFn = void *(__thiscall *)(void *, std::uint32_t);
+                return reinterpret_cast<SpawnFn>(g_exe_base + 0x1FD730)(
+                    reinterpret_cast<void *>(mgr), key);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return nullptr;
+            }
+        }
+
+        // read-only watcher for the streamer spawn calls. v3: capture the spawn TEMPLATE too.
+        // FUN_005FD730 is (ECX=mgr, key on stack): slot = FUN_005fac60(mgr,key) walks the mgr's
+        // transient pass table (array at mgr+0x94, u16 count at mgr+0x9a; match = the slot value
+        // at +4 is IN the key's id-array (ptr at key+0x1C, u16 count at key+0x22)). Slot[0] = P
+        // (validity: P[+8] must be negative), P[0] = Q = the TEMPLATE object; the engine's slow
+        // path spawns via [[Q]+0xC](Q,0,0) + activate + flush. mgr + its table are TRANSIENT
+        // (die with the pass) -> the replay must clone the captured Q directly.
+        std::atomic<std::uint32_t> g_spawn_last_mgr {0};
+        std::atomic<std::uint32_t> g_spawn_last_key {0};
+
+        struct SpawnV3 {
+            std::uint32_t mgr = 0;
+            std::uint32_t key = 0;
+            std::uint32_t caller_rva = 0;
+            std::uint16_t arr_cnt = 0;
+            std::uint32_t arr[64] = {};
+            std::uint32_t kv = 0;
+            std::int32_t  pv = 0;
+            std::uint32_t q = 0;
+            std::uint32_t q_vt = 0;
+            std::uint32_t q_fn = 0;
+            std::uint16_t q_ch = 0; // v8: the record's child count (full-body records = ch>=16)
+            int           matches = 0;
+            bool          found = false;
+            bool          body = false;
+            bool          fallback = false;
+            std::uint32_t tab = 0;
+            std::uint32_t n = 0;
+            int           mode = -1; // mode byte *[0x2AC1E68] at call time (-1 = ptr null)
+        };
+        SpawnV3 g_spawn_v3;      // best capture (for the test)
+        SpawnV3 g_spawn_v3_last; // most recent call (for logging)
+
+        static void spawn_v3_capture_try(std::uint32_t mgr, std::uint32_t key,
+                                         std::uint32_t caller) {
+            __try {
+                SpawnV3 c {};
+                c.mgr = mgr;
+                c.key = key;
+                c.caller_rva = caller ? static_cast<std::uint32_t>(caller - g_exe_base) : 0;
+                {
+                    const auto mp = mem::read<std::uint32_t>(g_exe_base + 0x26C1E68);
+                    if (mp) {
+                        c.mode = static_cast<int>(mem::read<std::uint8_t>(mp));
+                    }
+                }
+                if (key != 0 && readable(key, 0x40)) {
+                    const auto arrp = mem::read<std::uint32_t>(key + 0x1C);
+                    const auto cnt = mem::read<std::uint16_t>(key + 0x22);
+                    if (arrp && cnt && cnt <= 64 && readable(arrp, cnt * 4)) {
+                        c.arr_cnt = cnt;
+                        for (std::uint32_t i = 0; i < cnt; ++i) {
+                            c.arr[i] = mem::read<std::uint32_t>(arrp + i * 4);
+                        }
+                    }
+                    c.tab = mem::read<std::uint32_t>(mgr + 0x94);
+                    c.n = mem::read<std::uint16_t>(mgr + 0x9A);
+                    if (c.tab && c.n && c.n <= 64 && readable(c.tab, c.n * 8)) {
+                        for (std::uint32_t i = 0; i < c.n; ++i) {
+                            const auto kv = mem::read<std::uint32_t>(c.tab + i * 8 + 4);
+                            bool       match = c.arr_cnt != 0;
+                            if (match) {
+                                match = false;
+                                for (std::uint32_t j = 0; j < c.arr_cnt; ++j) {
+                                    if (c.arr[j] == kv) {
+                                        match = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!match) {
+                                continue;
+                            }
+                            const auto P = mem::read<std::uint32_t>(c.tab + i * 8);
+                            if (!P || !readable(P, 0xC)) {
+                                continue;
+                            }
+                            const auto Q = mem::read<std::uint32_t>(P);
+                            if (!Q || !readable(Q, 8)) {
+                                continue;
+                            }
+                            const auto    vt = mem::read<std::uint32_t>(Q);
+                            std::uint32_t fn = 0;
+                            if (vt && readable(vt + 0xC, 4)) {
+                                fn = mem::read<std::uint32_t>(vt + 0xC);
+                            }
+                            ++c.matches;
+                            c.kv = kv;
+                            c.pv = static_cast<std::int32_t>(mem::read<std::uint32_t>(P + 8));
+                            c.q = Q;
+                            c.q_vt = vt;
+                            c.q_fn = fn;
+                            c.q_ch = readable(Q + 0x66, 2)
+                                         ? mem::read<std::uint16_t>(Q + 0x66)
+                                         : 0;
+                            c.found = true;
+                            c.body = (vt == 0x01E4CE90U);
+                            if (c.body) {
+                                break; // prefer a body-class template
+                            }
+                        }
+                    }
+                    // FUN_005fac60's FALLBACK when the table is empty / has no match: the slot
+                    // at mgr+0x80. Observed live: every streamer manager takes exactly this
+                    // path (tables empty; the fallback record holds the Entity template).
+                    if (!c.found) {
+                        const auto P = mem::read<std::uint32_t>(mgr + 0x80);
+                        if (P && readable(P, 0xC)) {
+                            const auto Q = mem::read<std::uint32_t>(P);
+                            if (Q && readable(Q, 8)) {
+                                const auto    vt = mem::read<std::uint32_t>(Q);
+                                std::uint32_t fn = 0;
+                                if (vt && readable(vt + 0xC, 4)) {
+                                    fn = mem::read<std::uint32_t>(vt + 0xC);
+                                }
+                                c.pv = static_cast<std::int32_t>(mem::read<std::uint32_t>(P + 8));
+                                c.q = Q;
+                                c.q_vt = vt;
+                                c.q_fn = fn;
+                                c.q_ch = readable(Q + 0x66, 2)
+                                             ? mem::read<std::uint16_t>(Q + 0x66)
+                                             : 0;
+                                c.found = true;
+                                c.body = (vt == 0x01E4CE90U);
+                                c.fallback = true;
+                            }
+                        }
+                    }
+                }
+                g_spawn_v3_last = c;
+                // best-for-test v8: maximise the record's child count (the fullest record wins);
+                // tie-break to the Entity class.
+                if (c.found) {
+                    const bool better =
+                        !g_spawn_v3.found || (c.q_ch > g_spawn_v3.q_ch) ||
+                        (c.q_ch == g_spawn_v3.q_ch && c.body && !g_spawn_v3.body);
+                    if (better) {
+                        g_spawn_v3 = c;
+                    }
+                }
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+            }
+        }
+
+        static void spawn_v3_log() {
+            const auto &c = g_spawn_v3_last;
+            static int           full_logs = 0;
+            static std::uint32_t last_sig = ~0U;
+            std::uint32_t sig = (c.found ? 1U : 0U) | (c.fallback ? 2U : 0U) |
+                                (c.body ? 4U : 0U);
+            sig = sig * 31U + c.q_vt;
+            sig = sig * 31U + c.q_fn;
+            if (full_logs >= 12 && sig == last_sig) {
+                return;
+            }
+            ++full_logs;
+            last_sig = sig;
+            log::get()->info(
+                "SpawnWatch: call#{} mgr=0x{:X} key=0x{:X} caller=+0x{:X} mode={} arr_cnt={} "
+                "tab=0x{:X} n={} fb={} found={} kv=0x{:X} pv={} q=0x{:X} vt=0x{:X} fn=0x{:X} "
+                "ch={} matches={}",
+                full_logs, c.mgr, c.key, c.caller_rva, c.mode, c.arr_cnt, c.tab, c.n,
+                c.fallback ? 1 : 0, c.found ? 1 : 0, c.kv, c.pv, c.q, c.q_vt, c.q_fn, c.q_ch,
+                c.matches);
+        }
+
+        static void spawn_live_do(std::uint32_t mgr, std::uint32_t key); // v4 (defined below)
+        static void spawn_edward_do(std::uint32_t mgr, std::uint32_t key); // v6 (defined below)
+
+        struct ProbeSpawnCall {
+            [[maybe_unused]] static void operator()(mem::Registers &r) {
+                const auto key = mem::read<std::uint32_t>(r.esp + 4);
+                const auto caller = mem::read<std::uint32_t>(r.esp);
+                const auto mgr = static_cast<std::uint32_t>(r.ecx);
+                g_spawn_last_mgr.store(mgr, std::memory_order_relaxed);
+                g_spawn_last_key.store(key, std::memory_order_relaxed);
+                spawn_v3_capture_try(mgr, key, caller);
+                const auto n = g_spawnwatch_logs.fetch_add(1, std::memory_order_relaxed);
+                if (n < 200) {
+                    log::get()->info("SpawnWatch: streamer spawn mgr=0x{:X} key=0x{:X}", mgr, key);
+                }
+                spawn_v3_log();
+                // v4: in-hook spawn test (armed one-shot, clone-path calls only). The hook
+                // runs ON the streaming thread inside the pass - the context the engine
+                // itself spawns in, and the only one where the clone path survives.
+                if (g_spawn_test.load(std::memory_order_relaxed) && !g_spawn_test_done &&
+                    g_spawn_v3_last.mode == 0) {
+                    // v16.5: clone EDWARD (v6 recipe) + attach. The SOURCE must be verified:
+                    // it must have real part definitions (>=0x10000) and must NEVER be one of
+                    // our own clones (clones of clones lose the part defs).
+                    const bool edward_ok =
+                        g_act_node != 0 && readable(g_act_node, 4) &&
+                        mem::read<std::uint32_t>(g_act_node) == 0x01E4CE90U;
+                    const bool world_ok =
+                        (std::fabs(g_last_pos.x) + std::fabs(g_last_pos.y) +
+                         std::fabs(g_last_pos.z)) > 20.0F;
+                    bool src_ok = false;
+                    if (edward_ok && world_ok && g_spawn_v3_last.body) {
+                        src_ok = (g_act_node != g_spawnq_obj && g_act_node != g_v16_obj);
+                    }
+                    if (g_spawn_v3_last.body && world_ok) {
+                        g_spawn_test_done = true;
+                        if (edward_ok && src_ok) {
+                            spawn_edward_do(mgr, key);
+                        } else {
+                            // v18.2: no live Edward available - the plain record clone still runs
+                            // the graphics attach + the record-handle share.
+                            spawn_live_do(mgr, key);
+                        }
+                    } else {
+                        static int skipped = 0;
+                        if (skipped < 8) {
+                            ++skipped;
+                            log::get()->info(
+                                "SpawnTest v18.2: skipping call (body={} edward={} world={} src={})",
+                                g_spawn_v3_last.body ? 1 : 0, edward_ok ? 1 : 0, world_ok ? 1 : 0,
+                                src_ok ? 1 : 0);
+                        }
+                    }
+                }
+            }
+        };
+
+        mem::MidHook g_probe_spawn_call;
+
+        // FUN_00503600 = the FULL deep copy: allocate via desc 0x275AFD0 + node clone FUN_0052A980
+        // + STATE BLOCK 0x100..0x148. The node-only clone (vt+0xC = FUN_0052A980) that we called
+        // before skipped the state - the likely reason the copy never rendered. thiscall(source,0,0).
+        static int deep_copy_helper(std::uintptr_t source, void **out) {
+            __try {
+                using DeepFn = void *(__thiscall *)(void *, std::uint32_t, std::uint32_t);
+                *out = reinterpret_cast<DeepFn>(g_exe_base + 0x103600)(
+                    reinterpret_cast<void *>(source), 0U, 0U);
+                return 0;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        // FUN_006deff0 = the engine's own sync-clone entry (allocate via desc [0x2799098] + setup
+        // post + FUN_00503600 deep copy incl. the state block). thiscall(source, 0, 0).
+        static int sync_clone_helper(std::uintptr_t source, void **out) {
+            __try {
+                using ClFn = void *(__thiscall *)(void *, std::uint32_t, std::uint32_t);
+                *out = reinterpret_cast<ClFn>(g_exe_base + 0x2DEFF0)(
+                    reinterpret_cast<void *>(source), 0U, 0U);
+                return 0;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        // --- SpawnTest v3: clone the captured TEMPLATE + materialization watch ---
+        std::int64_t   g_spawnq_t0 = 0;
+        int            g_spawnq_stage = 0; // 0 idle, 1 watching (1s/4s/10s), 2 done
+        int            g_spawnq_step = 0;
+        bool           g_spawnq_pending = false; // v5: placement deferred until a valid position
+        bool           g_v16_done = true;
+        std::uint32_t  g_seh_code = 0;  // last SEH code from the clone helpers
+        std::uint32_t  g_seh_addr = 0;  // last faulting address (absolute)
+
+        static int lookup_helper(std::uint32_t mgr, std::uint32_t key, void **out) {
+            __try {
+                using LookupFn = void *(__thiscall *)(void *, std::uint32_t);
+                *out = reinterpret_cast<LookupFn>(g_exe_base + 0x1FAC60)(
+                    reinterpret_cast<void *>(mgr), key);
+                return 0;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        static int template_clone_helper(std::uintptr_t q, void **out) {
+            __try {
+                const auto vt = mem::read<std::uint32_t>(q);
+                if (!vt || !readable(vt + 0xC, 4)) {
+                    return 2;
+                }
+                const auto fn = mem::read<std::uint32_t>(vt + 0xC);
+                if (fn < 0x401000U || fn > 0x2400000U) {
+                    return 3;
+                }
+                using ClFn = void *(__thiscall *)(void *, std::uint32_t, std::uint32_t);
+                *out = reinterpret_cast<ClFn>(fn)(reinterpret_cast<void *>(q), 0U, 0U);
+                return 0;
+            } __except (g_seh_code = GetExceptionCode(),
+                        g_seh_addr = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(
+                            GetExceptionInformation()->ExceptionRecord->ExceptionAddress)),
+                        EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        static void spawnq_fields(const char *tag, std::uintptr_t b) {
+            if (!readable(b, 0x100)) {
+                log::get()->info("{} 0x{:X}: unreadable", tag, b);
+                return;
+            }
+            log::get()->info(
+                "{} 0x{:X}: vt=0x{:X} ch={} f7c={:.2f} f50=0x{:X} f54=0x{:X} f5C=0x{:X} f60=0x{:X} "
+                "fAC=0x{:X} fB0=0x{:X} fD4=0x{:X} fE8=0x{:X}",
+                tag, b, static_cast<std::uintptr_t>(mem::read<std::uint32_t>(b)),
+                mem::read<std::uint16_t>(b + 0x66), static_cast<double>(mem::read<float>(b + 0x7C)),
+                mem::read<std::uint32_t>(b + 0x50), mem::read<std::uint32_t>(b + 0x54),
+                mem::read<std::uint32_t>(b + 0x5C), mem::read<std::uint32_t>(b + 0x60),
+                mem::read<std::uint32_t>(b + 0xAC), mem::read<std::uint32_t>(b + 0xB0),
+                mem::read<std::uint32_t>(b + 0xD4), mem::read<std::uint32_t>(b + 0xE8));
+        }
+
+        // v4: the in-hook spawn. Called from the spawn hook = ON the streaming thread, inside
+        // the pass - the only context where the clone path is proven to work (cold calls fault
+        // in the job/queue container growth). Re-runs the engine's own spawn call and captures
+        // its return (the clone), then moves it 2.5 m east with the usual watch.
+        static int spawn_live_helper(std::uint32_t mgr, std::uint32_t key, void **out) {
+            __try {
+                using SpawnFn = void *(__thiscall *)(void *, std::uint32_t);
+                *out = reinterpret_cast<SpawnFn>(g_exe_base + 0x1FD730)(
+                    reinterpret_cast<void *>(mgr), key);
+                return 0;
+            } __except (g_seh_code = GetExceptionCode(),
+                        g_seh_addr = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(
+                            GetExceptionInformation()->ExceptionRecord->ExceptionAddress)),
+                        EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        // v16.2: the variant factory thunk - NOTE the corrected call shape (decoded from the
+        // dispatcher case at 0x91F68A): the definition goes ON THE STACK (cdecl); the thunk sets
+        // its own ECX (0x27E1CF0) and tail-calls the wrapper -> FUN_0085F9C0(def).
+        static std::uintptr_t factory_call(std::uintptr_t entry_va, std::uint32_t def) {
+            __try {
+                using Fn = std::uintptr_t(__cdecl *)(std::uint32_t);
+                return reinterpret_cast<Fn>(entry_va)(def);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 0;
+            }
+        }
+
+        static std::uintptr_t graphics_lookup(std::uint32_t def, const char **which) {
+            const std::uintptr_t entries[6] = {g_exe_base + 0x44A040, g_exe_base + 0x44A050,
+                                               g_exe_base + 0x44A060, g_exe_base + 0x44A070,
+                                               g_exe_base + 0x44A080, g_exe_base + 0x44A0F0};
+            const char        *names[6]   = {"A040", "A050", "A060", "A070", "A080", "A0F0"};
+            for (int i = 0; i < 6; ++i) {
+                const auto g = factory_call(entries[i], def);
+                if (g) {
+                    *which = names[i];
+                    return g;
+                }
+            }
+            *which = "-";
+            return 0;
+        }
+
+        // Pure SEH poke helper (keeps __try out of functions that also contain logging).
+        static int poke_u32(std::uintptr_t addr, std::uint32_t value) {
+            __try {
+                *reinterpret_cast<std::uint32_t *>(addr) = value;
+                return 0;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 1;
+            }
+        }
+
+        static void spawn_live_do(std::uint32_t mgr, std::uint32_t key) {
+            log::get()->info(
+                "SpawnTest v4: IN-HOOK spawn mgr=0x{:X} key=0x{:X} - running the engine's own "
+                "call on the streaming thread",
+                mgr, key);
+            void      *obj = nullptr;
+            const auto rc  = spawn_live_helper(mgr, key, &obj);
+            log::get()->info("SpawnTest v4: LIVESPAWN rc={} obj=0x{:X} seh=0x{:X} at+0x{:X}", rc,
+                             reinterpret_cast<std::uintptr_t>(obj), g_seh_code,
+                             g_seh_addr ? static_cast<std::uint32_t>(g_seh_addr - g_exe_base) : 0);
+            if (rc != 0 || obj == nullptr) {
+                return;
+            }
+            const auto o = reinterpret_cast<std::uintptr_t>(obj);
+            spawnq_fields("SpawnTest v4: obj", o);
+            const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+            LARGE_INTEGER nowt {};
+            QueryPerformanceCounter(&nowt);
+            const bool pos_fresh =
+                g_last_pos_t0 != 0 && freq > 0 && (nowt.QuadPart - g_last_pos_t0) <= freq * 3;
+            const bool pos_valid =
+                (std::fabs(g_last_pos.x) + std::fabs(g_last_pos.y) + std::fabs(g_last_pos.z)) >
+                20.0F;
+            if (pos_fresh && pos_valid && readable(o + 0x10, 0x40)) {
+                alignas(16) float mm[16];
+                std::memcpy(mm, reinterpret_cast<const void *>(o + 0x10), sizeof(mm));
+                mm[12] = g_last_pos.x + 2.5F;
+                mm[13] = g_last_pos.y;
+                mm[14] = g_last_pos.z;
+                mm[15] = 1.0F;
+                std::memcpy(reinterpret_cast<void *>(o + 0x10), mm, sizeof(mm));
+                log::get()->info("SpawnTest v5: placed at ({:.1f},{:.1f}) - LOOK 2.5 m EAST",
+                                 static_cast<double>(mm[12]), static_cast<double>(mm[13]));
+            } else {
+                g_spawnq_pending = true;
+                log::get()->info("SpawnTest v5: placement DEFERRED (fresh={} valid={}) - placed "
+                                 "next to the player as soon as the position is known",
+                                 pos_fresh ? 1 : 0, pos_valid ? 1 : 0);
+            }
+            g_spawnq_obj = o;
+            g_spawnq_step = 0;
+            g_hswap_clone = o;
+            g_hswap_done = false;
+            g_hswap_cursor = 0x30000000;
+            LARGE_INTEGER t {};
+            QueryPerformanceCounter(&t);
+            g_spawnq_t0 = t.QuadPart;
+            g_spawnq_stage = 1;
+        }
+
+        // v16.2: run the attach for an object. Corrected call shape: the def goes on the stack
+        // (cdecl), all kind-variants tried. Body first (+0x50 then +0x54), then parts.
+        static void attach_graphics_try(std::uintptr_t o) {
+            const std::uint32_t def50 =
+                readable(o + 0x50, 4) ? mem::read<std::uint32_t>(o + 0x50) : 0U;
+            const std::uint32_t def54 =
+                readable(o + 0x54, 4) ? mem::read<std::uint32_t>(o + 0x54) : 0U;
+            const char *which = "-";
+            std::uintptr_t g1 = def50 ? graphics_lookup(def50, &which) : 0;
+            log::get()->info("v16.2 ATTACH: body def50=0x{:X} def54=0x{:X} -> graphic=0x{:X} via {}",
+                             def50, def54, static_cast<std::uintptr_t>(g1), which);
+            if (!g1 && def54) {
+                g1 = graphics_lookup(def54, &which);
+                log::get()->info("v16.2 ATTACH: retry with def54 -> 0x{:X} via {}",
+                                 static_cast<std::uintptr_t>(g1), which);
+            }
+            if (g1) {
+                poke_u32(o + 0xAC, static_cast<std::uint32_t>(g1));
+                poke_u32(o + 0xB0, static_cast<std::uint32_t>(g1));
+            }
+            const auto arr  = mem::read<std::uint32_t>(o + 0x60);
+            const auto n    = mem::read<std::uint16_t>(o + 0x66);
+            int        done = 0;
+            if (arr && n && n < 64 && readable(arr, static_cast<std::size_t>(n) * 4)) {
+                for (std::uint32_t i = 0; i < n && done < 32; ++i) {
+                    const auto kid = mem::read<std::uint32_t>(arr + i * 4);
+                    if (!kid || !readable(kid + 0x58, 4)) {
+                        continue;
+                    }
+                    const auto kdef = mem::read<std::uint32_t>(kid + 0x50);
+                    if (!kdef) {
+                        continue;
+                    }
+                    const char *kw = "-";
+                    const auto  kg = graphics_lookup(kdef, &kw);
+                    if (kg) {
+                        poke_u32(kid + 0xAC, static_cast<std::uint32_t>(kg));
+                        poke_u32(kid + 0xB0, static_cast<std::uint32_t>(kg));
+                        ++done;
+                        log::get()->info("v16.3 ATTACH: part[{}] 0x{:X} def=0x{:X} -> 0x{:X} via {}",
+                                         i, kid, kdef, static_cast<std::uintptr_t>(kg), kw);
+                    }
+                }
+            }
+            spawnq_fields("v16.3: obj after attach", o);
+        }
+
+        // v6: spawn a copy of a LIVE FULL CHARACTER (Edward's body) through the engine's own
+        // pipeline. The streamer call would normally clone its record template Q - we point the
+        // record at Edward for ONE invocation, run the engine's own slow path ourselves (SEH-safe),
+        // then restore the record BEFORE the engine's own call proceeds. Our call's return = the
+        // engine-made clone of a full character.
+        static void spawn_edward_do(std::uint32_t mgr, std::uint32_t key) {
+            const auto P = mem::read<std::uint32_t>(mgr + 0x80);
+            if (!P || !readable(P, 8)) {
+                log::get()->warn("SpawnTest v6: no record at mgr+0x80 (mgr=0x{:X})", mgr);
+                return;
+            }
+            const auto Q = mem::read<std::uint32_t>(P);
+            log::get()->info(
+                "SpawnTest v6: SUBSTITUTE record P=0x{:X} Q=0x{:X} -> Edward 0x{:X} (ch={})", P, Q,
+                g_act_node, mem::read<std::uint16_t>(g_act_node + 0x66));
+            if (poke_u32(P, static_cast<std::uint32_t>(g_act_node)) != 0) {
+                log::get()->warn("SpawnTest v6: record write faulted");
+                return;
+            }
+            // The engine's own slow path now clones EDWARD. Guarded - an AV is caught, not fatal.
+            void      *obj = nullptr;
+            const auto rc  = spawn_live_helper(mgr, key, &obj);
+            // Restore immediately so the engine's own call (which runs right after this hook)
+            // sees the original record again and behaves normally.
+            const auto rrc = poke_u32(P, Q);
+            log::get()->info(
+                "SpawnTest v6: EDWARD CLONE rc={} obj=0x{:X} seh=0x{:X} at+0x{:X} (restore={})",
+                rc, reinterpret_cast<std::uintptr_t>(obj), g_seh_code,
+                g_seh_addr ? static_cast<std::uint32_t>(g_seh_addr - g_exe_base) : 0, rrc);
+            if (rc != 0 || obj == nullptr) {
+                return;
+            }
+            const auto o = reinterpret_cast<std::uintptr_t>(obj);
+            spawnq_fields("SpawnTest v6: obj", o);
+            const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+            LARGE_INTEGER nowt {};
+            QueryPerformanceCounter(&nowt);
+            const bool pos_fresh =
+                g_last_pos_t0 != 0 && freq > 0 && (nowt.QuadPart - g_last_pos_t0) <= freq * 3;
+            const bool pos_valid =
+                (std::fabs(g_last_pos.x) + std::fabs(g_last_pos.y) + std::fabs(g_last_pos.z)) >
+                20.0F;
+            if (pos_fresh && pos_valid && readable(o + 0x10, 0x40)) {
+                alignas(16) float mm[16];
+                std::memcpy(mm, reinterpret_cast<const void *>(o + 0x10), sizeof(mm));
+                mm[12] = g_last_pos.x + 2.5F;
+                mm[13] = g_last_pos.y;
+                mm[14] = g_last_pos.z;
+                mm[15] = 1.0F;
+                std::memcpy(reinterpret_cast<void *>(o + 0x10), mm, sizeof(mm));
+                log::get()->info("SpawnTest v6: placed at ({:.1f},{:.1f}) - LOOK 2.5 m EAST",
+                                 static_cast<double>(mm[12]), static_cast<double>(mm[13]));
+            } else {
+                g_spawnq_pending = true;
+                log::get()->info("SpawnTest v6: placement DEFERRED (fresh={} valid={})",
+                                 pos_fresh ? 1 : 0, pos_valid ? 1 : 0);
+            }
+            // v16.1: the graphics attach is DEFERRED to the watch step (+4 s) - at creation the
+            // definition is still the static default (0x1FD2xxxx); Edward's real one
+            // (0x5FDA027C) only arrives with the engine's fill (~1 s).
+            g_v16_obj  = o;
+            g_v16_done = false;
+            g_spawnq_obj = o;
+            g_spawnq_step = 0;
+            g_hswap_clone = o;
+            g_hswap_done = false;
+            g_hswap_cursor = 0x30000000;
+            LARGE_INTEGER t {};
+            QueryPerformanceCounter(&t);
+            g_spawnq_t0 = t.QuadPart;
+            g_spawnq_stage = 1;
+        }
+
+        static void spawn_test_tick(const Vec3 &player) {
+            // v4: the spawn runs INSIDE the live spawn hook (streaming thread, in-pass - the
+            // only context where the clone path is proven to work). This tick only announces
+            // arming; the hook sets g_spawn_test_done when it fires.
+            (void)player;
+            static bool logged = false;
+            if (!logged) {
+                logged = true;
+                log::get()->info("SpawnTest v4: armed - waiting for a live clone-path call "
+                                 "(mode=0); the spawn runs in-hook and is placed 2.5 m east");
+            }
+        }
+
+        // v5: the BANKED async-clone protocol (never executed on a free-roam save): async slot
+        // (vtable+0x8) = serialize source + post job -> the engine deserializes a complete,
+        // renderable copy. Position-disambiguation: offset the source +3 m, call, restore; the
+        // copy appears near the +3 m spot and a body-scan finds it.
+        std::int64_t g_async_wait_qpc = 0;
+        float        g_async_spot[3]  = {};
+        bool         g_async_pending  = false;
+        std::uintptr_t g_async_src    = 0;
+
+        static void clone_live_scan_spot(std::uintptr_t lo, std::uintptr_t hi, const float *spot,
+                                         std::uintptr_t src, CloneLiveCand *out, int &out_n,
+                                         int max_n) {
+            __try {
+                for (auto p = lo; p + 4 <= hi; p += 4) {
+                    if (out_n >= max_n) {
+                        break;
+                    }
+                    if (p == src) {
+                        continue;
+                    }
+                    const auto vt = mem::read<std::uint32_t>(p);
+                    if (vt != 0x01E4CE90U) {
+                        continue;
+                    }
+                    const auto ch = readable(p + 0x66, 2) ? mem::read<std::uint16_t>(p + 0x66) : 0;
+                    if (ch < 16) {
+                        continue;
+                    }
+                    float bx = 0.0F;
+                    float by = 0.0F;
+                    if (readable(p + 0x40, 8)) {
+                        bx = mem::read<float>(p + 0x40);
+                        by = mem::read<float>(p + 0x44);
+                    }
+                    const auto dx = bx - spot[0];
+                    const auto dy = by - spot[1];
+                    if (dx * dx + dy * dy > 36.0F) {
+                        continue; // more than 6 m from the async spawn spot
+                    }
+                    auto &c = out[out_n++];
+                    c.addr = p;
+                    c.vt   = vt;
+                    c.x    = bx;
+                    c.y    = by;
+                    c.d    = std::sqrt(dx * dx + dy * dy);
+                    c.ch   = ch;
+                }
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+            }
+        }
+
+        static void clone_live_tick(const Vec3 &player) {
+            if (g_clone_live_stage == 0) {
+                g_clone_live_cursor = 0x30000000;
+                g_clone_live_src    = 0;
+                g_clone_live_obj    = 0;
+                g_clone_live_bestd  = 1.0e9F;
+                g_clone_live_cand_n = 0;
+                g_clone_live_try    = 0;
+                g_clone_live_gap    = 0;
+                g_clone_live_scan_ran = false;
+                g_clone_live_ghost  = games::ac::blackflag::coop::ghost::status().body;
+                log::get()->info("CloneLive: armed (player node=0x{:X}, ghost=0x{:X})", g_act_node,
+                                 g_clone_live_ghost);
+                if (g_act_node != 0 && readable(g_act_node, 4) &&
+                    mem::read<std::uint32_t>(g_act_node) == 0x01E4CE90U) {
+                    // Primary path: clone the PLAYER'S OWN body node through its real clone
+                    // slot (vtable+0xC = FUN_0052A980, the node clone).
+                    g_clone_live_cands[0].addr = g_act_node;
+                    g_clone_live_cands[0].vt   = 0x01E4CE90U;
+                    g_clone_live_cands[0].d    = 0.0F;
+                    g_clone_live_cands[0].ch   = mem::read<std::uint16_t>(g_act_node + 0x66);
+                    g_clone_live_cand_n        = 1;
+                    g_clone_live_order[0]      = 0;
+                    log::get()->info(
+                        "CloneLive: primary target = the player's body 0x{:X} (ch={}) - cloning it",
+                        g_act_node, g_clone_live_cands[0].ch);
+                    g_clone_live_stage = 2;
+                } else {
+                    log::get()->info(
+                        "CloneLive: no player node - falling back to a nearby body scan");
+                    g_clone_live_stage = 1;
+                }
+            } else if (g_clone_live_stage == 1) {
+                constexpr std::uintptr_t k_end = 0x50000000;
+                const auto step_end = (g_clone_live_cursor + (8U << 20U)) < k_end
+                                          ? g_clone_live_cursor + (8U << 20U)
+                                          : k_end;
+                clone_live_scan(g_clone_live_cursor, step_end, player);
+                g_clone_live_cursor = step_end;
+                if (g_clone_live_cursor >= k_end) {
+                    for (int i = 0; i < g_clone_live_cand_n; i++) {
+                        g_clone_live_order[i] = i;
+                    }
+                    for (int i = 1; i < g_clone_live_cand_n; i++) {
+                        const int key = g_clone_live_order[i];
+                        int       j   = i - 1;
+                        while (j >= 0 &&
+                               clone_live_score(g_clone_live_cands[g_clone_live_order[j]]) >
+                                   clone_live_score(g_clone_live_cands[key])) {
+                            g_clone_live_order[j + 1] = g_clone_live_order[j];
+                            j--;
+                        }
+                        g_clone_live_order[j + 1] = key;
+                    }
+                    log::get()->info("CloneLive: scan done, {} candidates", g_clone_live_cand_n);
+                    g_clone_live_scan_ran = true;
+                    for (int i = 0; i < g_clone_live_cand_n; i++) {
+                        const auto &c = g_clone_live_cands[g_clone_live_order[i]];
+                        log::get()->info(
+                            "CloneLive: #{} 0x{:X} vt=0x{:X} ch={} f7c={:.2f} f50=0x{:X} "
+                            "({:.1f},{:.1f}) d={:.1f}",
+                            i, c.addr, static_cast<std::uintptr_t>(c.vt), c.ch,
+                            static_cast<double>(c.f7c), c.f50, static_cast<double>(c.x),
+                            static_cast<double>(c.y), static_cast<double>(c.d));
+                    }
+                    g_clone_live_stage = 2;
+                }
+            } else if (g_clone_live_stage == 2) {
+                if (g_clone_live_cand_n == 0 || g_clone_live_try >= g_clone_live_cand_n ||
+                    g_clone_live_try >= 12) {
+                    if (!g_clone_live_scan_ran) {
+                        log::get()->info(
+                            "CloneLive: primary failed - scanning for a fallback body");
+                        g_clone_live_scan_ran = true;
+                        g_clone_live_cand_n   = 0;
+                        g_clone_live_try      = 0;
+                        g_clone_live_cursor   = 0x30000000;
+                        g_clone_live_stage    = 1;
+                        return;
+                    }
+                    log::get()->warn("CloneLive: no cloneable candidate (tried {})",
+                                     g_clone_live_try);
+                    g_clone_live_stage = 4;
+                    return;
+                }
+                // Pace: at most one engine call per 0.5 s (no AV bursts).
+                {
+                    const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+                    LARGE_INTEGER now {};
+                    QueryPerformanceCounter(&now);
+                    if (g_clone_live_gap != 0 && freq > 0 &&
+                        now.QuadPart - g_clone_live_gap < freq / 2) {
+                        return;
+                    }
+                    g_clone_live_gap = now.QuadPart;
+                }
+                const auto &c = g_clone_live_cands[g_clone_live_order[g_clone_live_try]];
+                // Shared placement (move 2.5 m east + activate + flush + final stage).
+                auto place_clone = [&](std::uintptr_t node) {
+                    g_clone_live_obj = node;
+                    if (readable(g_clone_live_obj + 0x10, 0x40)) {
+                        alignas(16) float mm[16];
+                        std::memcpy(mm, reinterpret_cast<const void *>(g_clone_live_obj + 0x10),
+                                    sizeof(mm));
+                        mm[12] = player.x + 2.5F;
+                        mm[13] = player.y;
+                        mm[14] = player.z;
+                        mm[15] = 1.0F;
+                        std::memcpy(reinterpret_cast<void *>(g_clone_live_obj + 0x10), mm,
+                                    sizeof(mm));
+                    }
+                    const auto ar = activate_helper(g_clone_live_obj);
+                    const auto fr = jobflush_helper();
+                    clone_live_fields("CloneLive: src", c.addr);
+                    clone_live_fields("CloneLive: obj", g_clone_live_obj);
+                    log::get()->info("CloneLive: placed act={} flush={} - LOOK 2.5 m EAST", ar, fr);
+                    LARGE_INTEGER now2 {};
+                    QueryPerformanceCounter(&now2);
+                    g_clone_live_t0    = now2.QuadPart;
+                    g_clone_live_stage = 3;
+                };
+                // v7 PRIMARY: the engine's own sync clone (FUN_006deff0: allocate via desc
+                // [0x2799098] + setup post + FUN_00503600 deep copy incl. state 0x100..0x148).
+                // Then the raw deep copy (null-alloc path), then the async path below.
+                {
+                    void      *sc  = nullptr;
+                    const auto src = sync_clone_helper(c.addr, &sc);
+                    log::get()->info("CloneLive: SYNCCLONE try#{} cand=0x{:X} rc={} out=0x{:X}",
+                                     g_clone_live_try, c.addr, src,
+                                     reinterpret_cast<std::uintptr_t>(sc));
+                    if (src == 0 && sc != nullptr) {
+                        place_clone(reinterpret_cast<std::uintptr_t>(sc));
+                        return;
+                    }
+                }
+                {
+                    void      *dc  = nullptr;
+                    const auto drc = deep_copy_helper(c.addr, &dc);
+                    log::get()->info("CloneLive: DEEPCOPY try#{} cand=0x{:X} rc={} out=0x{:X}",
+                                     g_clone_live_try, c.addr, drc,
+                                     reinterpret_cast<std::uintptr_t>(dc));
+                    if (drc == 0 && dc != nullptr) {
+                        place_clone(reinterpret_cast<std::uintptr_t>(dc));
+                        return;
+                    }
+                }
+                // ASYNC protocol (banked, first run on a free-roam save): serialize + the
+                // engine's own deserialize = a complete renderable copy. Non-player sources get
+                // a +3 m offset for unambiguous spotting; the transform is restored right after
+                // the (synchronous) serialize step.
+                const bool        is_player = (c.addr == g_act_node);
+                bool              offset_ok = false;
+                alignas(16) float mm[16] {};
+                float             saved_x = 0.0F;
+                float             spot_y  = player.y;
+                float             spot_z  = player.z;
+                if (!is_player && readable(c.addr + 0x10, 0x40)) {
+                    std::memcpy(mm, reinterpret_cast<const void *>(c.addr + 0x10), sizeof(mm));
+                    saved_x = mm[12];
+                    spot_y  = mm[13];
+                    spot_z  = mm[14];
+                    mm[12] += 3.0F;
+                    std::memcpy(reinterpret_cast<void *>(c.addr + 0x10), mm, sizeof(mm));
+                    offset_ok = true;
+                }
+                void      *out = nullptr;
+                const auto rc  = async_clone_call_helper(c.addr, &out);
+                if (offset_ok) {
+                    mm[12] = saved_x;
+                    std::memcpy(reinterpret_cast<void *>(c.addr + 0x10), mm, sizeof(mm));
+                }
+                log::get()->info(
+                    "CloneLive: ASYNC try#{} cand=0x{:X} ch={} player_src={} rc=0x{:X} out=0x{:X}",
+                    g_clone_live_try, c.addr, c.ch, is_player ? 1 : 0,
+                    static_cast<std::uint32_t>(rc), reinterpret_cast<std::uintptr_t>(out));
+                if (rc == 0) {
+                    g_async_src     = c.addr;
+                    g_async_spot[0] = is_player ? player.x : saved_x + 3.0F;
+                    g_async_spot[1] = is_player ? player.y : spot_y;
+                    g_async_spot[2] = is_player ? player.z : spot_z;
+                    LARGE_INTEGER now {};
+                    QueryPerformanceCounter(&now);
+                    g_async_wait_qpc    = now.QuadPart;
+                    g_clone_live_cursor = 0x30000000;
+                    log::get()->info(
+                        "CloneLive: async posted - waiting ~2 s, then scanning near ({:.1f},{:.1f})",
+                        static_cast<double>(g_async_spot[0]), static_cast<double>(g_async_spot[1]));
+                    g_clone_live_stage = 5;
+                } else {
+                    g_clone_live_try++;
+                }
+            } else if (g_clone_live_stage == 5) {
+                const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+                LARGE_INTEGER now {};
+                QueryPerformanceCounter(&now);
+                if (freq > 0 && now.QuadPart - g_async_wait_qpc < freq * 2) {
+                    return; // give the engine's job time to materialize the copy
+                }
+                constexpr std::uintptr_t k_end = 0x50000000;
+                const auto step_end = (g_clone_live_cursor + (8U << 20U)) < k_end
+                                          ? g_clone_live_cursor + (8U << 20U)
+                                          : k_end;
+                g_clone_live_cand_n = 0;
+                clone_live_scan_spot(g_clone_live_cursor, step_end, g_async_spot, g_async_src,
+                                     g_clone_live_cands, g_clone_live_cand_n, 32);
+                g_clone_live_cursor = step_end;
+                if (g_clone_live_cand_n > 0) {
+                    for (int i = 0; i < g_clone_live_cand_n; i++) {
+                        const auto &d = g_clone_live_cands[i];
+                        log::get()->info(
+                            "CloneLive: ASYNC copy candidate 0x{:X} ch={} at ({:.1f},{:.1f}) "
+                            "d={:.1f}",
+                            d.addr, d.ch, static_cast<double>(d.x), static_cast<double>(d.y),
+                            static_cast<double>(d.d));
+                    }
+                    const auto node  = g_clone_live_cands[0].addr;
+                    g_clone_live_obj = node;
+                    if (readable(node + 0x10, 0x40)) {
+                        alignas(16) float mm2[16];
+                        std::memcpy(mm2, reinterpret_cast<const void *>(node + 0x10), sizeof(mm2));
+                        mm2[12] = player.x + 2.5F;
+                        mm2[13] = player.y;
+                        mm2[14] = player.z;
+                        mm2[15] = 1.0F;
+                        std::memcpy(reinterpret_cast<void *>(node + 0x10), mm2, sizeof(mm2));
+                    }
+                    const auto ar = activate_helper(node);
+                    const auto fr = jobflush_helper();
+                    log::get()->info(
+                        "CloneLive: ASYNC copy 0x{:X} moved to player + activation rc={} flush "
+                        "rc={} - LOOK 2.5 m EAST",
+                        node, ar, fr);
+                    clone_live_fields("CloneLive: async obj", node);
+                    LARGE_INTEGER t {};
+                    QueryPerformanceCounter(&t);
+                    g_clone_live_t0    = t.QuadPart;
+                    g_clone_live_stage = 3;
+                    return;
+                }
+                if (g_clone_live_cursor >= k_end ||
+                    (freq > 0 && now.QuadPart - g_async_wait_qpc >= freq * 12)) {
+                    log::get()->warn("CloneLive: no async copy found near the spot");
+                    g_clone_live_try++;
+                    g_clone_live_stage = 2;
+                }
+            } else if (g_clone_live_stage == 3 && g_clone_live_obj != 0) {
+                const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+                LARGE_INTEGER now {};
+                QueryPerformanceCounter(&now);
+                if (freq > 0 && now.QuadPart - g_clone_live_t0 >= freq * 10) {
+                    clone_live_fields("CloneLive: obj@10s", g_clone_live_obj);
+                    log::get()->info("CloneLive: finished");
+                    g_clone_live_stage = 4;
+                }
+            }
+        }
+
         auto clone_test_tick() -> void {
             if (g_clone_attempted) {
                 return;
@@ -685,33 +1756,131 @@ namespace hooks {
         // The census + clone test on a plugin-owned thread: the heap scan takes minutes and
         // must never block the camera frame (it froze the game when it ran inline).
         static DWORD WINAPI clone_test_thread(LPVOID /*unused*/) {
-            thread_census_tick();
-            Sleep(20000); // let the world finish loading - page churn slows the scan 5x
-            clone_test_tick();
-            // Arm the gameplay spawn capture: walk around and the crowd streamer's node
-            // creations get logged (read-only) - that's the free-roam spawn path.
-            Sleep(20000);
+            // v9: this thread now only arms the gameplay spawn TRACE (the old census / route-B /
+            // keyed experiments are obsolete). The node-ctor + alloc probes log every character
+            // construction with its CALLER while the player walks around (cap 300 lines each).
+            Sleep(2000);
             g_spawn_logs.store(0, std::memory_order_relaxed);
+            g_new_logs.store(0, std::memory_order_relaxed);
+            g_alloc_pair_n.store(0, std::memory_order_relaxed);
+            g_mass_logs.store(0, std::memory_order_relaxed);
+            g_entctor_logs.store(0, std::memory_order_relaxed);
+            g_node_logs.store(0, std::memory_order_relaxed);
+            g_ent_key_count.store(0, std::memory_order_relaxed);
             g_spawn_capture.store(true, std::memory_order_relaxed);
-            log::get()->info("SpawnCapture: armed - walk around town for ~60 s");
-            // === THE ENTITY SPAWN v3: create + FETCH VIA THE REGISTRY (FUN_00a201a0 is void;
-            // its return value is meaningless). One spawn only (less render risk).
-            Sleep(30000);
-            const std::uint32_t klo = 0x7A3C9E01;
-            const std::uint32_t khi = 7;
-            if (g_exe_base != 0) {
-                log::get()->info("EntitySpawn: create Entity key=(0x{:X},{}) ...", klo, khi);
-                spawn_keyed_helper(g_exe_base + 0x6201A0, 0x0984415E, klo, khi);
-                const auto found = registry_find_helper(g_exe_base + 0x61F160, klo, khi);
-                log::get()->info("EntitySpawn: registry find -> 0x{:X}", found);
-                if (found >= 0x10000 && readable(found + 0x148, 4)) {
-                    log::get()->info(
-                        "EntitySpawn: vt=0x{:X} children={} f7c={:.2f} mark=0x{:X} d4=0x{:X}",
-                        static_cast<std::uintptr_t>(mem::read<std::uint32_t>(found)),
-                        mem::read<std::uint16_t>(found + 0x66),
-                        static_cast<double>(mem::read<float>(found + 0x7C)),
-                        mem::read<std::uintptr_t>(found + 0xC8),
-                        mem::read<std::uintptr_t>(found + 4));
+            log::get()->info("SpawnCapture: armed - walk around town for ~90 s (node-ctor/alloc trace)");
+            // v12: summary after the world has loaded (~150 s): how many Entity mass-creates
+            // were seen and the last key pair (the citizen-creation recipe).
+            Sleep(150000);
+            log::get()->info("KeyTrace: entity mass-creates seen={} lastKey=(0x{:X},0x{:X})",
+                             g_ent_key_count.load(std::memory_order_relaxed),
+                             g_last_ent_key_lo.load(std::memory_order_relaxed),
+                             g_last_ent_key_hi.load(std::memory_order_relaxed));
+            // v15: (a) deliver a real body among the captured keys (rolling ring of 128);
+            // (b) THE SPAWN TEST - the corrected create + REGISTER combination (never run
+            // correctly before: the old attempts passed no registry in ECX).
+            {
+                if (g_exe_base == 0) {
+                    return 0;
+                }
+                const auto reg = g_last_registry.load(std::memory_order_relaxed);
+                if (reg == 0) {
+                    log::get()->warn("KeySpawn: no registry captured");
+                    return 0;
+                }
+                std::uintptr_t body  = 0;
+                std::uint32_t bodyLo = 0;
+                std::uint32_t bodyHi = 0;
+                for (int i = 0; i < 128 && body == 0; ++i) {
+                    const auto klo = g_ent_keys_lo[i];
+                    const auto khi = g_ent_keys_hi[i];
+                    if (klo == 0) {
+                        continue;
+                    }
+                    const auto ent = registry_find2(g_exe_base + 0x61F160, reg, klo, khi);
+                    if (ent < 0x10000 || !readable(ent + 0x100, 4)) {
+                        continue;
+                    }
+                    const auto f7c = mem::read<float>(ent + 0x7C);
+                    const auto ch  = mem::read<std::uint16_t>(ent + 0x66);
+                    if (std::fabs(f7c + 0.5F) < 0.01F && ch >= 16) {
+                        body   = ent;
+                        bodyLo = klo;
+                        bodyHi = khi;
+                    }
+                }
+                if (body != 0) {
+                    log::get()->info("KeySpawn: body found key (0x{:X},0x{:X}) -> 0x{:X}", bodyLo,
+                                     bodyHi, body);
+                    spawnq_fields("KeySpawn: body", body);
+                    if (readable(body + 0x10, 0x40)) {
+                        alignas(16) float mm[16];
+                        std::memcpy(mm, reinterpret_cast<const void *>(body + 0x10), sizeof(mm));
+                        mm[12] = g_last_pos.x + 2.5F;
+                        mm[13] = g_last_pos.y;
+                        mm[14] = g_last_pos.z;
+                        mm[15] = 1.0F;
+                        for (int w = 0; w < 40; ++w) {
+                            std::memcpy(reinterpret_cast<void *>(body + 0x10), mm, sizeof(mm));
+                            Sleep(75);
+                        }
+                        log::get()->info("KeySpawn: DELIVERED real body (key 0x{:X},0x{:X}) - LOOK "
+                                         "2.5 m EAST",
+                                         bodyLo, bodyHi);
+                    }
+                } else {
+                    log::get()->warn("KeySpawn: no body-like entity among the captured keys");
+                }
+                // === (b) v17: MATURATION TEST - does a registered fake-key entity receive the
+                // world/scene fill (+0x5C + fAC + fB0) over the next minutes? The engine's own
+                // mass-created entities gain those ~2 min after creation. ===
+                const std::uint32_t nkLo = 0x7A3C9E01U;
+                const std::uint32_t nkHi = 7U;
+                spawn_keyed2(g_exe_base + 0x6201A0, reg, 0x0984415EU, nkLo, nkHi);
+                auto ne = registry_find2(g_exe_base + 0x61F160, reg, nkLo, nkHi);
+                log::get()->info("KeySpawn v17: CREATE fake key (0x{:X},{}) -> 0x{:X}", nkLo, nkHi,
+                                 static_cast<std::uintptr_t>(ne));
+                if (ne >= 0x10000 && readable(ne + 0x100, 4)) {
+                    spawnq_fields("KeySpawn v17: shell", ne);
+                    const auto rrc = spawn_reg_helper(g_exe_base + 0x11D290, ne);
+                    log::get()->info("KeySpawn v17: register rc={}", rrc);
+                    for (int p = 0; p < 20; ++p) {
+                        Sleep(15000);
+                        if (!readable(ne + 0x100, 4)) {
+                            log::get()->warn("KeySpawn v17: shell freed at poll {}", p);
+                            break;
+                        }
+                        const auto f = [&](std::uint32_t off) {
+                            return mem::read<std::uint32_t>(ne + off);
+                        };
+                        log::get()->info(
+                            "KeySpawn v17: poll{} ch={} f50=0x{:X} w5C=0x{:X} fAC=0x{:X} fB0=0x{:X} "
+                            "fD4=0x{:X} fE8=0x{:X}",
+                            p, mem::read<std::uint16_t>(ne + 0x66), f(0x50), f(0x5C), f(0xAC),
+                            f(0xB0), f(0xD4), f(0xE8));
+                        if (f(0x5C) || f(0xAC) || f(0xB0)) {
+                            log::get()->info("KeySpawn v17: *** SHELL MATURED at poll {} ***", p);
+                        }
+                    }
+                    spawnq_fields("KeySpawn v17: shell final", ne);
+                    if (readable(ne + 0x10, 0x40)) {
+                        alignas(16) float mm[16];
+                        std::memcpy(mm, reinterpret_cast<const void *>(ne + 0x10), sizeof(mm));
+                        mm[12] = g_last_pos.x - 2.5F;
+                        mm[13] = g_last_pos.y;
+                        mm[14] = g_last_pos.z;
+                        mm[15] = 1.0F;
+                        for (int w = 0; w < 10; ++w) {
+                            std::memcpy(reinterpret_cast<void *>(ne + 0x10), mm, sizeof(mm));
+                            Sleep(75);
+                        }
+                        log::get()->info("KeySpawn v17: shell placed at ({:.1f},{:.1f}) - LOOK 2.5 m "
+                                         "WEST",
+                                         static_cast<double>(mm[12]),
+                                         static_cast<double>(mm[13]));
+                    }
+                } else {
+                    log::get()->warn("KeySpawn v17: create returned no entity");
                 }
             }
             return 0;
@@ -759,14 +1928,15 @@ namespace hooks {
             }
         }
 
-        auto find_player_ctl(const Vec3 &pos) -> std::uintptr_t {
-            std::uintptr_t best  = 0;
-            float         bestd = 64.0F; // 8 m squared
+        // Walk one address range for character nodes near pos (region by region, 90 ms soft
+        // budget per range). Returns the best candidate via best/bestd.
+        static void scan_node_range(std::uintptr_t lo, std::uintptr_t hi, const Vec3 &pos,
+                                    std::uintptr_t &best, float &bestd) {
             LARGE_INTEGER t0 {};
             QueryPerformanceCounter(&t0);
             const auto freq = g_qpc_freq.load(std::memory_order_relaxed);
-            std::uintptr_t addr = 0x10000;
-            while (addr < 0x7FFF0000) {
+            std::uintptr_t addr = lo;
+            while (addr < hi) {
                 MEMORY_BASIC_INFORMATION mbi {};
                 if (VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) == 0) {
                     break;
@@ -792,6 +1962,19 @@ namespace hooks {
                     }
                 }
             }
+        }
+
+        auto find_player_ctl(const Vec3 &pos) -> std::uintptr_t {
+            std::uintptr_t best  = 0;
+            float          bestd = 64.0F; // 8 m squared
+            // Pass 1: the character heap (where player/crowd nodes actually live) - fast.
+            // Pass 2: the whole address space, only if pass 1 found nothing.
+            // NOTE: this used to always walk the whole space, stalling the game ~3 s per
+            // pass; the two-pass order keeps the common case cheap.
+            scan_node_range(0x30000000U, 0x54000000U, pos, best, bestd);
+            if (best == 0) {
+                scan_node_range(0x10000U, 0x7FFF0000U, pos, best, bestd);
+            }
             if (best == 0) {
                 return 0;
             }
@@ -814,16 +1997,69 @@ namespace hooks {
             if (now.QuadPart - g_load_qpc < freq * 20) {
                 return;
             }
-            const auto dt = now.QuadPart - g_act_last_qpc;
-            const bool rescan = dt > freq * 10; // full rescan every 10 s
-            if (g_act_ctl != 0 && !rescan) {
-                if (g_act_node != 0 && readable(g_act_node + 0x68, 4) &&
-                    mem::read<std::uint32_t>(g_act_node + 0x68) == 0x04DD5F8C) {
-                    return; // node still alive, keep the cached controller
+            // Fast path: cached controller whose node is still alive - never scan.
+            // (Old logic ALSO forced a full-address-space rescan every 10 s, and with no
+            // rate limit at all when no controller was known yet. That scan freezes the
+            // game thread for ~3 s per pass; at menus it ran back-to-back. Timing matched
+            // the "freezes every few seconds" report and is the prime suspect for the
+            // recurring nvwgf2um driver crashes. Fixed 2026-10-08.)
+            if (g_act_ctl != 0 && g_act_node != 0 && readable(g_act_node + 0x68, 4) &&
+                mem::read<std::uint32_t>(g_act_node + 0x68) == 0x04DD5F8C) {
+                return; // node still alive, keep the cached controller
+            }
+            // v19.2: rescans are OFF unless [PlayerTransform] ActScan=true. find_player_ctl
+            // walks up to ~2 GB byte-wise (~3 s freeze per pass). During fast travel the
+            // cached node dies and the scan fired mid-load; the 2026-10-09 crash dumps
+            // (game-code null deref, then nvwgf2um driver AV) both show an identical
+            // ~3.2 s pre-crash log gap - the stall is the crash trigger, not the shells.
+            if (!g_act_scan_allowed.load(std::memory_order_relaxed)) {
+                g_act_ctl  = 0;
+                g_act_node = 0;
+                return;
+            }
+            // Rate-limit rescans (3 s base, growing to 20 s after repeated misses) so a
+            // menu/loading screen can never keep the scanner running on the game thread.
+            {
+                auto delay = 3U * (g_act_fail_count + 1U);
+                if (delay > 20U) {
+                    delay = 20U;
+                }
+                if (g_act_last_qpc != 0 && now.QuadPart - g_act_last_qpc < freq * delay) {
+                    return;
                 }
             }
             g_act_last_qpc = now.QuadPart;
+            LARGE_INTEGER   scan_t0 {};
+            QueryPerformanceCounter(&scan_t0);
             g_act_ctl      = find_player_ctl(pos);
+            LARGE_INTEGER   scan_t1 {};
+            QueryPerformanceCounter(&scan_t1);
+            log::get()->info("ActScan: took {} ms found={}",
+                             static_cast<int>((scan_t1.QuadPart - scan_t0.QuadPart) * 1000 / freq),
+                             g_act_ctl != 0 ? 1 : 0);
+            if (g_act_ctl == 0) {
+                if (g_act_fail_count < 6U) {
+                    g_act_fail_count++;
+                }
+            } else {
+                g_act_fail_count = 0;
+            }
+            // One-time class comparison for the anim probe (route-2 hunt): log the player
+            // controller's vtable + header so it can be compared against the ghost body's
+            // +0xE8 object (GhostAnimProbe). Read-only.
+            static std::uintptr_t s_last_ctl_logged = 0;
+            if (g_act_ctl != 0 && g_act_ctl != s_last_ctl_logged) {
+                s_last_ctl_logged = g_act_ctl;
+                log::get()->info("ActCtl: player ctl=0x{:X} vt=0x{:X}", g_act_ctl,
+                                 mem::read<std::uint32_t>(g_act_ctl));
+                std::string head;
+                char        tmp[16];
+                for (int i = 0; i < 0x40; i += 4) {
+                    std::snprintf(tmp, sizeof(tmp), "%08X ", mem::read<std::uint32_t>(g_act_ctl + i));
+                    head += tmp;
+                }
+                log::get()->info("ActCtl: head: {}", head);
+            }
         }
 
         // Replay: CREATE in-hook during a live burst (the spawn container is transient and only
@@ -841,14 +2077,57 @@ namespace hooks {
         // the real recipe for crowd/character creation (391 calls at world load).
         struct ProbeMassCreate {
             [[maybe_unused]] static void operator()(mem::Registers &r) {
-                const auto n = g_spawn_logs.fetch_add(1, std::memory_order_relaxed);
-                if (n >= 300) {
-                    return;
-                }
+                g_last_registry.store(static_cast<std::uint32_t>(r.ecx), std::memory_order_relaxed);
                 const auto a1 = mem::read<std::uintptr_t>(r.esp + 4);
                 const auto a2 = mem::read<std::uintptr_t>(r.esp + 8);
                 const auto a3 = mem::read<std::uintptr_t>(r.esp + 0x0C);
                 const auto a4 = mem::read<std::uintptr_t>(r.esp + 0x10);
+                if (a1 == 0x0984415EU) { // Entity class - the character/world entity creation
+                    const auto idx = g_ent_key_count.fetch_add(1, std::memory_order_relaxed);
+                    g_last_ent_key_lo.store(static_cast<std::uint32_t>(a2), std::memory_order_relaxed);
+                    g_last_ent_key_hi.store(static_cast<std::uint32_t>(a3), std::memory_order_relaxed);
+                    const auto slot = static_cast<unsigned>(idx) & 127U;
+                    g_ent_keys_lo[slot] = static_cast<std::uint32_t>(a2);
+                    g_ent_keys_hi[slot] = static_cast<std::uint32_t>(a3);
+                    // v19: record the key with a load-burst id (>15 s gap = new burst).
+                    const auto nowms = static_cast<std::uint64_t>(GetTickCount64());
+                    if (nowms - g_adopt_burst_last.load(std::memory_order_relaxed) > 15000ULL) {
+                        g_adopt_burst.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    g_adopt_burst_last.store(nowms, std::memory_order_relaxed);
+                    const auto bi   = g_adopt_burst.load(std::memory_order_relaxed);
+                    const auto aidx = g_adopt_key_n.fetch_add(1, std::memory_order_relaxed);
+                    if (aidx < 8192) {
+                        g_adopt_keys[aidx].lo    = static_cast<std::uint32_t>(a2);
+                        g_adopt_keys[aidx].hi    = static_cast<std::uint32_t>(a3);
+                        g_adopt_keys[aidx].burst = bi;
+                    }
+                    if (bi < 128) {
+                        if (g_adopt_burst_count[bi] == 0) {
+                            g_adopt_burst_first_lo[bi] = static_cast<std::uint32_t>(a2);
+                            g_adopt_burst_first_hi[bi] = static_cast<std::uint32_t>(a3);
+                        }
+                        ++g_adopt_burst_count[bi];
+                    }
+                    // v19: did the load request one of our pre-placed keys?
+                    if (g_adopt_shell_n > 0) {
+                        for (int s = 0; s < g_adopt_shell_n; ++s) {
+                            if (g_adopt_shell_lo[s] == static_cast<std::uint32_t>(a2) &&
+                                g_adopt_shell_hi[s] == static_cast<std::uint32_t>(a3)) {
+                                static std::atomic<int> hit_logs {0};
+                                if (hit_logs.fetch_add(1, std::memory_order_relaxed) < 100) {
+                                    log::get()->info("Adopt: LOAD HIT shell[{}] key=(0x{:X},0x{:X})",
+                                                     s, a2, a3);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                const auto n = g_mass_logs.fetch_add(1, std::memory_order_relaxed);
+                if (n >= 3000) {
+                    return;
+                }
                 log::get()->info("MassCreate: classId=0x{:X} keyLo=0x{:X} keyHi=0x{:X} a4=0x{:X}",
                                  a1, a2, a3, a4);
             }
@@ -921,6 +2200,30 @@ namespace hooks {
             }
         }
 
+        // v14 CORRECTED signatures (decoded from the disasm): both are THISCALL with the
+        // registry in ECX. FUN_00a1f160(ECX=registry, keyLo, keyHi) -> entity.
+        static std::uintptr_t registry_find2(std::uintptr_t fn, std::uint32_t reg, std::uint32_t k1,
+                                             std::uint32_t k2) {
+            __try {
+                using Fn = std::uintptr_t(__thiscall *)(void *, std::uint32_t, std::uint32_t);
+                return reinterpret_cast<Fn>(fn)(reinterpret_cast<void *>(reg), k1, k2);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return 0;
+            }
+        }
+
+        // FUN_00a201a0(ECX=registry, classId, keyLo, keyHi, 0) - find-or-create.
+        static void *spawn_keyed2(std::uintptr_t fn, std::uint32_t reg, std::uint32_t id,
+                                  std::uint32_t k1, std::uint32_t k2) {
+            __try {
+                using SpawnFn = void *(__thiscall *)(void *, std::uint32_t, std::uint32_t,
+                                                     std::uint32_t, std::uint32_t);
+                return reinterpret_cast<SpawnFn>(fn)(reinterpret_cast<void *>(reg), id, k1, k2, 0);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return nullptr;
+            }
+        }
+
         // FUN_0051d290(entity) - register the entity (fastcall: entity in ecx).
         static int spawn_reg_helper(std::uintptr_t fn, std::uintptr_t entity) {
             __try {
@@ -930,6 +2233,374 @@ namespace hooks {
             } __except (EXCEPTION_EXECUTE_HANDLER) {
                 return 1;
             }
+        }
+
+        // v20 ReqWatch: capture the engine's own animation-request setter FUN_01ad9190.
+        // thiscall: ECX = behavior object; stack: [esp+4] = slot index (-1 = all six),
+        // [esp+8] = requested value; [esp] = return address. Read-only, capped log.
+        struct ProbeReqWatch {
+            [[maybe_unused]] static void operator()(mem::Registers &r) {
+                static std::atomic<int> n {0};
+                const auto              k = n.fetch_add(1, std::memory_order_relaxed);
+                if (k >= 600) {
+                    return;
+                }
+                const auto stack = static_cast<std::uintptr_t>(r.esp);
+                const auto slot  = mem::read<std::int32_t>(stack + 4);
+                const auto val   = mem::read<std::uint32_t>(stack + 8);
+                log::get()->info("ReqWatch: #{} this=0x{:X} slot={} val=0x{:X} caller=0x{:X}",
+                                 k, static_cast<std::uint32_t>(r.ecx), slot, val,
+                                 mem::read<std::uint32_t>(stack));
+            }
+        };
+
+        // v21 AnimApply: animation-apply probe FUN_01ac1ad0. thiscall: ECX = behavior object;
+        // six uint32 slots at this+0x2F50..+0x2F64. Read-only, capped log. Log the first 60
+        // calls, then only while any slot differs from the 0xFFFFFFFF sentinel.
+        struct ProbeAnimApply {
+            [[maybe_unused]] static void operator()(mem::Registers &r) {
+                static std::atomic<int> calls {0};
+                static int              logged = 0;
+                const auto              k     = calls.fetch_add(1, std::memory_order_relaxed);
+                const auto              thisv = static_cast<std::uint32_t>(r.ecx);
+                if (k % 4096 == 0) {
+                    log::get()->info("AnimApply: calls={} this=0x{:X}", k, thisv);
+                }
+                if (logged >= 8000) {
+                    return;
+                }
+                std::uint32_t slots[6] = {0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+                                          0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu};
+                bool          any_non_ff = false;
+                if (readable(thisv + 0x2F50, 24)) {
+                    for (int i = 0; i < 6; ++i) {
+                        slots[i] = mem::read<std::uint32_t>(
+                            static_cast<std::uintptr_t>(thisv) + 0x2F50 + i * 4);
+                        if (slots[i] != 0xFFFFFFFFu) {
+                            any_non_ff = true;
+                        }
+                    }
+                }
+                if (k < 60 || any_non_ff) {
+                    ++logged;
+                    log::get()->info(
+                        "AnimApply: #{} this=0x{:X} slots=0x{:X},0x{:X},0x{:X},0x{:X},0x{:X},0x{:X}",
+                        k, thisv, slots[0], slots[1], slots[2], slots[3], slots[4], slots[5]);
+                }
+            }
+        };
+
+        // v21 AnimWrite: animation-write probe FUN_01b52c0. thiscall; stack args mirror
+        // ProbeReqWatch ([esp]=return address, [esp+4]=a,...). Read-only, capped log; after the
+        // first 60 calls only re-log when a..d change.
+        struct ProbeAnimWrite {
+            [[maybe_unused]] static void operator()(mem::Registers &r) {
+                static std::atomic<int> n {0};
+                static int              logged = 0;
+                static std::uint32_t    last_a = 0;
+                static std::uint32_t    last_b = 0;
+                static std::uint32_t    last_c = 0;
+                static std::uint32_t    last_d = 0;
+                static std::uint8_t     last_e = 0;
+                static std::uint8_t     last_f = 0;
+                const auto              k      = n.fetch_add(1, std::memory_order_relaxed);
+                const auto              stack  = static_cast<std::uintptr_t>(r.esp);
+                const auto              a      = mem::read<std::uint32_t>(stack + 4);
+                const auto              b      = mem::read<std::uint32_t>(stack + 8);
+                const auto              c      = mem::read<std::uint32_t>(stack + 0xC);
+                const auto              d      = mem::read<std::uint32_t>(stack + 0x10);
+                const auto              e      = mem::read<std::uint8_t>(stack + 0x14);
+                const auto              f      = mem::read<std::uint8_t>(stack + 0x18);
+                const auto              caller = mem::read<std::uint32_t>(stack);
+                if (k % 4096 == 0) {
+                    log::get()->info("AnimWrite: calls={}", k);
+                }
+                if (logged >= 30000) {
+                    return;
+                }
+                const bool changed =
+                    (a != last_a || b != last_b || c != last_c || d != last_d ||
+                     e != last_e || f != last_f);
+                if (k < 60 || changed) {
+                    last_a = a;
+                    last_b = b;
+                    last_c = c;
+                    last_d = d;
+                    last_e = e;
+                    last_f = f;
+                    ++logged;
+                    log::get()->info("AnimWrite: #{} this=0x{:X} a=0x{:X} b=0x{:X} c=0x{:X} "
+                                     "d=0x{:X} e=0x{:X} f=0x{:X} caller=0x{:X}",
+                                     k, static_cast<std::uint32_t>(r.ecx), a, b, c, d, e, f, caller);
+                }
+            }
+        };
+
+        // === v19 AdoptTest ===
+        // The world's own entity creation is find-or-create keyed by (worldHash, block): a shell
+        // pre-placed at a key BEFORE the region ever loads is returned by the load's own creation
+        // pass - i.e. the load may adopt OUR object. v19.1: plant ONLY at keys that currently have
+        // NO entity (fresh targets), and dump every recorded key to a file so a restart keeps them.
+        constexpr const char *k_adopt_keys_path =
+            "D:\\SteamLibrary\\steamapps\\common\\Assassin's Creed IV Black Flag\\plugins\\"
+            "AC.BlackFlag.PatchFix.keys.txt";
+
+        static void adopt_dump_keys() {
+            static int flushed = 0;
+            const auto n = g_adopt_key_n.load(std::memory_order_relaxed);
+            if (n <= flushed) {
+                return;
+            }
+            if (std::FILE *f = std::fopen(k_adopt_keys_path, "a")) {
+                char line[48];
+                int  cnt = 0;
+                for (int i = flushed; i < n && i < 8192; ++i) {
+                    const auto len = std::snprintf(line, sizeof(line), "%08X %08X\n",
+                                                   g_adopt_keys[i].lo, g_adopt_keys[i].hi);
+                    if (len > 0) {
+                        std::fwrite(line, 1, static_cast<std::size_t>(len), f);
+                    }
+                    ++cnt;
+                }
+                std::fclose(f);
+                flushed = n;
+                log::get()->info("Adopt: dumped {} keys to file", cnt);
+            }
+        }
+
+        static void adopt_precreate() {
+            const auto reg = g_last_registry.load(std::memory_order_relaxed);
+            const bool world_ok = (std::fabs(g_last_pos.x) + std::fabs(g_last_pos.y) +
+                                   std::fabs(g_last_pos.z)) > 20.0F;
+            if (reg == 0 || !world_ok) {
+                // keep armed, retry - the registry is captured at the first world load
+                static std::int64_t last_note = 0;
+                LARGE_INTEGER       now {};
+                QueryPerformanceCounter(&now);
+                const auto freq = g_qpc_freq.load(std::memory_order_relaxed);
+                if (freq > 0 && now.QuadPart - last_note > freq * 10) {
+                    last_note = now.QuadPart;
+                    log::get()->info("Adopt: waiting (registry=0x{:X} world={}) - plants when "
+                                     "in-world",
+                                     reg, world_ok ? 1 : 0);
+                }
+                return;
+            }
+            g_adopt_armed   = false;
+            g_adopt_created = true;
+            // candidates = keys with NO entity right now (genuinely fresh). Sources: the keys file
+            // (earlier sessions / other regions) + this session's record.
+            static std::uint32_t cand_lo[256];
+            static std::uint32_t cand_hi[256];
+            int                  ncand = 0;
+            const auto           add_cand = [&](std::uint32_t klo, std::uint32_t khi) -> void {
+                if (ncand >= 256 || (klo == 0 && khi == 0)) {
+                    return;
+                }
+                for (int j = 0; j < ncand; ++j) {
+                    if (cand_lo[j] == klo && cand_hi[j] == khi) {
+                        return;
+                    }
+                }
+                if (registry_find2(g_exe_base + 0x61F160, reg, klo, khi) != 0) {
+                    return; // entity exists - not a fresh target
+                }
+                cand_lo[ncand] = klo;
+                cand_hi[ncand] = khi;
+                ++ncand;
+            };
+            if (std::FILE *f = std::fopen(k_adopt_keys_path, "r")) {
+                char line[64];
+                int  ln = 0;
+                while (ncand < 256 && std::fgets(line, sizeof(line), f) != nullptr) {
+                    ++ln;
+                    if ((ln % 3) != 0) {
+                        continue;
+                    }
+                    std::uint32_t kl = 0;
+                    std::uint32_t kh = 0;
+                    if (std::sscanf(line, "%x %x", &kl, &kh) == 2) {
+                        add_cand(kl, kh);
+                    }
+                }
+                std::fclose(f);
+                log::get()->info("Adopt: file scan {} lines -> {} fresh so far", ln, ncand);
+            } else {
+                log::get()->info("Adopt: no keys file yet");
+            }
+            {
+                const auto nkeys = g_adopt_key_n.load(std::memory_order_relaxed);
+                for (int i = 0; i < nkeys && i < 8192 && ncand < 256; i += 2) {
+                    add_cand(g_adopt_keys[i].lo, g_adopt_keys[i].hi);
+                }
+            }
+            if (ncand == 0) {
+                log::get()->warn("Adopt: no fresh targets (every known key still has an entity) "
+                                 "- nothing planted; visit a NEW region first, restart, retry.");
+                return;
+            }
+            const auto    stride  = static_cast<std::uint32_t>(ncand) / 32U + 1U;
+            const auto    only_lo = g_adopt_only_lo.load(std::memory_order_relaxed);
+            const auto    only_hi = g_adopt_only_hi.load(std::memory_order_relaxed);
+            const auto    skip_lo = g_adopt_skip_lo.load(std::memory_order_relaxed);
+            const auto    skip_hi = g_adopt_skip_hi.load(std::memory_order_relaxed);
+            const int     max_n   = std::clamp(g_adopt_max.load(std::memory_order_relaxed), 0, 32);
+            const int     cap     = (max_n > 0) ? max_n : 32;
+            std::uint32_t want_lo[32] = {};
+            std::uint32_t want_hi[32] = {};
+            int           want = 0;
+            for (int i = 0; i < ncand && want < cap; i += static_cast<int>(stride)) {
+                if (only_lo != 0 && (cand_lo[i] != only_lo || cand_hi[i] != only_hi)) {
+                    continue;
+                }
+                if (skip_lo != 0 && cand_lo[i] == skip_lo && cand_hi[i] == skip_hi) {
+                    continue;
+                }
+                want_lo[want] = cand_lo[i];
+                want_hi[want] = cand_hi[i];
+                ++want;
+            }
+            log::get()->info(
+                "Adopt: {} fresh targets, planting {} (only=0x{:X}:0x{:X} skip=0x{:X}:0x{:X}) reg=0x{:X}",
+                ncand, want, only_lo, only_hi, skip_lo, skip_hi, reg);
+            int made = 0;
+            for (int i = 0; i < want; ++i) {
+                const auto e = spawn_keyed2(g_exe_base + 0x6201A0, reg, 0x0984415EU, want_lo[i],
+                                            want_hi[i]);
+                auto       p = reinterpret_cast<std::uintptr_t>(e);
+                if (p < 0x10000 || !readable(p + 0x100, 4)) {
+                    p = registry_find2(g_exe_base + 0x61F160, reg, want_lo[i], want_hi[i]);
+                }
+                if (p >= 0x10000 && readable(p + 0x100, 4)) {
+                    g_adopt_shells[made]      = p;
+                    g_adopt_shell_lo[made]    = want_lo[i];
+                    g_adopt_shell_hi[made]    = want_hi[i];
+                    g_adopt_shell_state[made] = 0;
+                    log::get()->info("Adopt: shell[{}] 0x{:X} key=(0x{:X},0x{:X})", made, p,
+                                     want_lo[i], want_hi[i]);
+                    ++made;
+                } else {
+                    log::get()->warn("Adopt: create failed key=(0x{:X},0x{:X})", want_lo[i],
+                                     want_hi[i]);
+                }
+            }
+            g_adopt_shell_n = made;
+            log::get()->info("Adopt: pre-create done - {} fresh shells planted. Now TRAVEL to the "
+                             "region those keys belong to.",
+                             made);
+        }
+
+        // If an adopted shell filled into a rendered body, deliver it next to the player so the
+        // win is visible: repeat the proven transform write for ~1 s (stream bodies accept it).
+        static void adopt_deliver_step() {
+            if (g_adopt_deliver_target == 0 || g_adopt_deliver_tries <= 0) {
+                return;
+            }
+            const auto p = g_adopt_deliver_target;
+            --g_adopt_deliver_tries;
+            if (!readable(p + 0x10, 0x44)) {
+                return;
+            }
+            alignas(16) float mm[16];
+            std::memcpy(mm, reinterpret_cast<const void *>(p + 0x10), sizeof(mm));
+            mm[12] = g_last_pos.x + 2.5F;
+            mm[13] = g_last_pos.y;
+            mm[14] = g_last_pos.z;
+            mm[15] = 1.0F;
+            std::memcpy(reinterpret_cast<void *>(p + 0x10), mm, sizeof(mm));
+            const Vec3 pp {mm[12], mm[13], mm[14]};
+            std::memcpy(reinterpret_cast<void *>(p + 0x40), &pp, sizeof(pp));
+            if (g_adopt_deliver_tries == 0) {
+                log::get()->info("Adopt: delivered 0x{:X} to ({:.1f},{:.1f}) - LOOK 2.5 m EAST", p,
+                                 static_cast<double>(mm[12]), static_cast<double>(mm[13]));
+            }
+        }
+
+        static void adopt_watch() {
+            if (g_adopt_shell_n == 0) {
+                return;
+            }
+            static std::int64_t last_qpc = 0;
+            const auto          freq = g_qpc_freq.load(std::memory_order_relaxed);
+            LARGE_INTEGER       now {};
+            QueryPerformanceCounter(&now);
+            if (freq > 0 && last_qpc != 0 && now.QuadPart - last_qpc < freq * 2) {
+                return;
+            }
+            last_qpc = now.QuadPart;
+            for (int i = 0; i < g_adopt_shell_n; ++i) {
+                const auto p = g_adopt_shells[i];
+                if (!readable(p, 4)) {
+                    continue;
+                }
+                const auto vt = mem::read<std::uint32_t>(p);
+                if (vt < 0x10000U) {
+                    if (g_adopt_shell_state[i] != 0xFFFFFFFFU) {
+                        g_adopt_shell_state[i] = 0xFFFFFFFFU;
+                        log::get()->info("Adopt: shell[{}] 0x{:X} freed/cleared (vt=0x{:X})", i, p,
+                                         vt);
+                    }
+                    continue;
+                }
+                if (!readable(p + 0x50, 0xA0)) {
+                    continue;
+                }
+                const auto    ch  = mem::read<std::uint16_t>(p + 0x66);
+                const auto    f50 = mem::read<std::uint32_t>(p + 0x50);
+                const auto    f7c = mem::read<float>(p + 0x7C);
+                const auto    w5c = mem::read<std::uint32_t>(p + 0x5C);
+                const auto    fac = mem::read<std::uint32_t>(p + 0xAC);
+                const auto    fb0 = mem::read<std::uint32_t>(p + 0xB0);
+                const auto    fd4 = mem::read<std::uint32_t>(p + 0xD4);
+                const auto    fe8 = mem::read<std::uint32_t>(p + 0xE8);
+                std::uint32_t f7c_bits = 0;
+                std::memcpy(&f7c_bits, &f7c, 4);
+                const auto h = (vt * 31U) ^ (f50 * 131U) ^ f7c_bits ^ (w5c * 7U) ^ (fac * 17U) ^
+                               (fb0 * 37U) ^ (static_cast<std::uint32_t>(ch) << 20) ^ (fd4 * 11U) ^
+                               (fe8 * 3U);
+                if (h != g_adopt_shell_state[i]) {
+                    g_adopt_shell_state[i] = h;
+                    if (g_adopt_watch_logs < 200) {
+                        ++g_adopt_watch_logs;
+                        log::get()->info(
+                            "Adopt: shell[{}] 0x{:X} ch={} f50=0x{:X} f7c={:.2f} w5C=0x{:X} "
+                            "fAC=0x{:X} fB0=0x{:X} fD4=0x{:X} fE8=0x{:X}",
+                            i, p, ch, f50, static_cast<double>(f7c), w5c, fac, fb0, fd4, fe8);
+                    }
+                    if (fac && ch >= 16 && std::fabs(f7c + 0.5F) < 0.01F &&
+                        g_adopt_deliver_target == 0) {
+                        g_adopt_deliver_target = p;
+                        g_adopt_deliver_tries  = 60;
+                        log::get()->info("*** Adopt: shell[{}] 0x{:X} became a RENDERED BODY - "
+                                         "delivering to the player ***",
+                                         i, p);
+                    }
+                }
+            }
+        }
+
+        static void adopt_tick() {
+            adopt_dump_keys();
+            // burst summaries (logged once per completed burst)
+            {
+                const auto cur    = g_adopt_burst.load(std::memory_order_relaxed);
+                auto       logged = g_adopt_logged_burst.load(std::memory_order_relaxed);
+                while (logged + 1 < cur && logged + 1 < 128) {
+                    const auto b = logged + 1;
+                    if (g_adopt_burst_count[b] != 0) {
+                        log::get()->info("Adopt: burst {} done keys={} first=(0x{:X},0x{:X})", b,
+                                         g_adopt_burst_count[b], g_adopt_burst_first_lo[b],
+                                         g_adopt_burst_first_hi[b]);
+                    }
+                    ++logged;
+                }
+                g_adopt_logged_burst.store(logged, std::memory_order_relaxed);
+            }
+            if (g_adopt_armed && !g_adopt_created) {
+                adopt_precreate();
+            }
+            adopt_watch();
+            adopt_deliver_step();
         }
 
         // In-hook create: call the engine's spawn API right now (valid container context),
@@ -1104,6 +2775,9 @@ namespace hooks {
 
         // Capture the true spawn requesters: hook the descriptor allocator FUN_00a38120 and
         // log its caller whenever the descriptor = a character/node class.
+        // Broadened alloc trace (v10): log the FIRST occurrence of every unique
+        // (class-ctor, caller) pair seen while the capture is armed - a complete map of the
+        // object-creation call graph. (Entity body ctor = 0x52B750, desc 0x2760EF0.)
         struct ProbeAlloc {
             [[maybe_unused]] static void operator()(mem::Registers &r) {
                 if (!g_spawn_capture.load(std::memory_order_relaxed)) {
@@ -1114,18 +2788,47 @@ namespace hooks {
                     return;
                 }
                 const auto ctor = mem::read<std::uint32_t>(desc + 0x30);
-                if (ctor != 0x0052A4A0 && ctor != 0x00503330 && ctor != 0x006DEFA0 &&
-                    ctor != 0x00504880) {
+                if (ctor < 0x401000 || ctor > 0x2400000) {
                     return;
                 }
-                const auto n = g_new_logs.fetch_add(1, std::memory_order_relaxed);
-                if (n >= 300) {
+                const auto ret =
+                    static_cast<std::uint32_t>(mem::read<std::uintptr_t>(r.esp));
+                const auto n = g_alloc_pair_n.load(std::memory_order_relaxed);
+                for (int i = 0; i < n && i < 768; ++i) {
+                    if (g_alloc_pairs[i].ctor == ctor && g_alloc_pairs[i].ret == ret) {
+                        ++g_alloc_pairs[i].count;
+                        return;
+                    }
+                }
+                if (n >= 768) {
                     return;
                 }
-                const auto ret = mem::read<std::uintptr_t>(r.esp);
-                log::get()->info("SpawnWho: desc=0x{:X} ctor=0x{:X} ret=0x{:X} alloc=0x{:X}", desc,
-                                 static_cast<std::uintptr_t>(ctor), ret,
-                                 mem::read<std::uintptr_t>(r.esp + 8));
+                auto &p = g_alloc_pairs[n];
+                p.ctor = ctor;
+                p.ret = ret;
+                p.desc = static_cast<std::uint32_t>(desc);
+                p.count = 1;
+                g_alloc_pair_n.store(n + 1, std::memory_order_relaxed);
+                log::get()->info("AllocTrace: pair#{} ctor=0x{:X} ret=0x{:X} desc=0x{:X}", n + 1,
+                                 ctor, ret, static_cast<std::uint32_t>(desc));
+            }
+        };
+
+        // v11: the Entity class constructor (VA 0x52B750, desc 0x2760EF0) hooked directly so
+        // EVERY Entity-object creation is caught with its caller - regardless of the path.
+        // The citizens' builder will appear here; its caller RVA is the target.
+        struct ProbeEntCtor {
+            [[maybe_unused]] static void operator()(mem::Registers &r) {
+                if (!g_spawn_capture.load(std::memory_order_relaxed)) {
+                    return;
+                }
+                const auto n = g_entctor_logs.fetch_add(1, std::memory_order_relaxed);
+                if (n >= 2000) {
+                    return;
+                }
+                log::get()->info("EntCtor: ret=0x{:X} this=0x{:X}",
+                                 static_cast<std::uintptr_t>(mem::read<std::uintptr_t>(r.esp)),
+                                 static_cast<std::uintptr_t>(r.ecx));
             }
         };
 
@@ -1137,8 +2840,8 @@ namespace hooks {
                 if (!g_spawn_capture.load(std::memory_order_relaxed)) {
                     return;
                 }
-                const auto n = g_spawn_logs.fetch_add(1, std::memory_order_relaxed);
-                if (n >= 300) {
+                const auto n = g_node_logs.fetch_add(1, std::memory_order_relaxed);
+                if (n >= 1000) {
                     return;
                 }
                 const auto ret = mem::read<std::uintptr_t>(r.esp);
@@ -1153,8 +2856,11 @@ namespace hooks {
         // descriptor (param_4 = [esp+0xC]) and the descriptor's first dwords (hash/size/ctor).
         struct ProbeNew {
             [[maybe_unused]] static void operator()(mem::Registers &r) {
+                if (!g_spawn_capture.load(std::memory_order_relaxed)) {
+                    return;
+                }
                 const auto n = g_new_logs.fetch_add(1, std::memory_order_relaxed);
-                if (n >= 400) {
+                if (n >= 60) {
                     return;
                 }
                 const auto desc = mem::read<std::uintptr_t>(r.esp + 0x0C);
@@ -1324,15 +3030,21 @@ namespace hooks {
                     }
                 }
 
-                // B4 read side: player action state -> packed anim_state.
+                // B4 read side: player locomotion fields -> packed anim_state.
+                // Layout (shared with the ghost replay): blend<<24 | phase<<16 | flags(3)<<8 | hang.
+                // Fields mapped from live captures 2026-10-08 (see MODLOG B4 table).
                 if (have && g_act_read_enabled) {
                     refresh_act_ctl(pos);
                     if (g_act_ctl != 0) {
                         const auto phase = mem::read<std::uint8_t>(g_act_ctl + 0x8E0);
                         const auto hang  = mem::read<std::uint8_t>(g_act_ctl + 0x8D8);
+                        const auto blend = mem::read<std::uint8_t>(g_act_ctl + 0x8D4);
+                        const auto f8d0  = mem::read<std::uint32_t>(g_act_ctl + 0x8D0);
                         const auto fl    = (mem::read<std::uint32_t>(g_act_ctl + 0x138) & 1U) |
-                                           ((mem::read<std::uint32_t>(g_act_ctl + 0x8D0) & 1U) << 1);
-                        g_last_anim_state = (static_cast<std::uint32_t>(phase) << 16) |
+                                           ((f8d0 & 1U) << 1) |
+                                           (((f8d0 >> 8) & 1U) << 2);
+                        g_last_anim_state = (static_cast<std::uint32_t>(blend) << 24) |
+                                            (static_cast<std::uint32_t>(phase) << 16) |
                                             (static_cast<std::uint32_t>(fl) << 8) |
                                             hang;
                     }
@@ -1353,7 +3065,14 @@ namespace hooks {
                 }
                 if (have) {
                     g_world_seen.store(true, std::memory_order_relaxed);
-                    g_last_pos = pos;
+                    // v5: only accept a real world position (rejects the (0,0,0) / Animus
+                    // loading-screen values so spawned objects are placed next to the player).
+                    if ((std::fabs(pos.x) + std::fabs(pos.y) + std::fabs(pos.z)) > 20.0F) {
+                        g_last_pos = pos;
+                        LARGE_INTEGER pt {};
+                        QueryPerformanceCounter(&pt);
+                        g_last_pos_t0 = pt.QuadPart;
+                    }
                     g_last_quat = quat;
                     static bool logged_ct = false;
                     if (!logged_ct) {
@@ -1367,12 +3086,131 @@ namespace hooks {
                 }
                 if (have) {
                     ghost::tick(pos.x, pos.y, pos.z, latest_remote());
+                    nav::tick(pos.x, pos.y, pos.z);
+                    if (g_clone_live.load(std::memory_order_relaxed)) {
+                        clone_live_tick(pos);
+                    }
+                    if (g_spawn_test.load(std::memory_order_relaxed) && !g_spawn_test_done) {
+                        spawn_test_tick(pos);
+                    }
+                    if (g_spawnq_pending && g_spawnq_obj != 0) {
+                        const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+                        LARGE_INTEGER nowt {};
+                        QueryPerformanceCounter(&nowt);
+                        const bool fresh = g_last_pos_t0 != 0 && freq > 0 &&
+                                           (nowt.QuadPart - g_last_pos_t0) <= freq * 3;
+                        const bool valid =
+                            (std::fabs(g_last_pos.x) + std::fabs(g_last_pos.y) +
+                             std::fabs(g_last_pos.z)) > 20.0F;
+                        if (fresh && valid && readable(g_spawnq_obj + 0x10, 0x40)) {
+                            alignas(16) float mm[16];
+                            std::memcpy(mm,
+                                        reinterpret_cast<const void *>(g_spawnq_obj + 0x10),
+                                        sizeof(mm));
+                            mm[12] = g_last_pos.x + 2.5F;
+                            mm[13] = g_last_pos.y;
+                            mm[14] = g_last_pos.z;
+                            mm[15] = 1.0F;
+                            std::memcpy(reinterpret_cast<void *>(g_spawnq_obj + 0x10), mm,
+                                        sizeof(mm));
+                            g_spawnq_pending = false;
+                            log::get()->info("SpawnTest v5: DEFERRED placement done at "
+                                             "({:.1f},{:.1f}) - LOOK 2.5 m EAST",
+                                             static_cast<double>(mm[12]),
+                                             static_cast<double>(mm[13]));
+                        }
+                    }
+                    if (g_spawnq_stage == 1 && g_spawnq_obj != 0) {
+                        const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+                        LARGE_INTEGER nowt {};
+                        QueryPerformanceCounter(&nowt);
+                        const auto el = (freq > 0) ? (nowt.QuadPart - g_spawnq_t0) / freq : 0;
+                        if (g_spawnq_step == 0 && el >= 1) {
+                            g_spawnq_step = 1;
+                            spawnq_fields("SpawnTest v3: obj@1s", g_spawnq_obj);
+                        } else if (g_spawnq_step == 1 && el >= 4) {
+                            g_spawnq_step = 2;
+                            spawnq_fields("SpawnTest v3: obj@4s", g_spawnq_obj);
+                            if (!g_v16_done && g_v16_obj != 0) {
+                                g_v16_done = true;
+                                attach_graphics_try(g_v16_obj);
+                            }
+                        } else if (g_spawnq_step == 2 && el >= 10) {
+                            g_spawnq_step = 3;
+                            spawnq_fields("SpawnTest v3: obj@10s", g_spawnq_obj);
+                        } else if (g_spawnq_step == 3 && el >= 30) {
+                            g_spawnq_step = 4;
+                            spawnq_fields("SpawnTest v3: obj@30s", g_spawnq_obj);
+                        } else if (g_spawnq_step == 4 && el >= 60) {
+                            g_spawnq_step = 5;
+                            spawnq_fields("SpawnTest v3: obj@60s", g_spawnq_obj);
+                        }
+                    }
+                    // v18: record-handle share (MODLOG 49 exp A): find a RENDERED body near the
+                    // player and give the clone its +0xC8 record handle (refcount incremented),
+                    // so the record-driven passes treat the clone like that world entity.
+                    if (!g_hswap_done && g_hswap_clone != 0) {
+                        const auto    freq = g_qpc_freq.load(std::memory_order_relaxed);
+                        LARGE_INTEGER nowt {};
+                        QueryPerformanceCounter(&nowt);
+                        if (freq > 0 && nowt.QuadPart - g_spawnq_t0 >= freq * 4) {
+                            g_clone_live_cand_n = 0;
+                            const auto hs_end = (g_hswap_cursor + (8U << 20U)) < 0x50000000U
+                                                    ? g_hswap_cursor + (8U << 20U)
+                                                    : 0x50000000U;
+                            clone_live_scan(g_hswap_cursor, hs_end, g_last_pos);
+                            g_hswap_cursor = hs_end;
+                            for (int i = 0; i < g_clone_live_cand_n; ++i) {
+                                const auto &cd = g_clone_live_cands[i];
+                                if (cd.addr == g_hswap_clone) {
+                                    continue;
+                                }
+                                if (cd.ch < 16 || cd.ch > 30) {
+                                    continue;
+                                }
+                                if (std::fabs(cd.f7c + 0.5F) > 0.01F) {
+                                    continue;
+                                }
+                                if (!readable(cd.addr + 0xCC, 4)) {
+                                    continue;
+                                }
+                                const auto fac = mem::read<std::uint32_t>(cd.addr + 0xAC);
+                                if (!fac) {
+                                    continue; // must be a RENDERED body (graphics bound)
+                                }
+                                const auto hd = mem::read<std::uint32_t>(cd.addr + 0xC8);
+                                if (!hd || !readable(hd + 8, 4)) {
+                                    continue;
+                                }
+                                const auto rc = mem::read<std::uint32_t>(hd + 4);
+                                (void)poke_u32(hd + 4, rc + 1);
+                                const auto oldh = mem::read<std::uint32_t>(g_hswap_clone + 0xC8);
+                                (void)poke_u32(g_hswap_clone + 0xC8, hd);
+                                g_hswap_done = true;
+                                log::get()->info(
+                                    "HShare: body 0x{:X} handle=0x{:X} (rc {}->{}) -> clone 0x{:X} "
+                                    "(old=0x{:X})",
+                                    cd.addr, hd, rc, rc + 1, g_hswap_clone, oldh);
+                                spawnq_fields("HShare: clone after swap", g_hswap_clone);
+                                break;
+                            }
+                            if (!g_hswap_done && g_hswap_cursor >= 0x50000000U) {
+                                g_hswap_done = true;
+                                log::get()->warn("HShare: no rendered body found");
+                            }
+                        }
+                    }
+                    adopt_tick();
                 }
                 if (g_cull_watch.load(std::memory_order_relaxed)) {
                     cull_watch_tick();
                 }
                 state_probe_tick(pos);
-                games::ac::blackflag::coop::combat::tick();
+                {
+                    const auto in_world = have && ((std::fabs(pos.x) + std::fabs(pos.y) +
+                                                    std::fabs(pos.z)) > 1.0F);
+                    games::ac::blackflag::coop::combat::tick(in_world);
+                }
 
                 // P2: feed the marker overlay. Camera pose from the manager ring (the same
                 // history the read path uses); ghost position from the driven body.
@@ -1436,14 +3274,14 @@ namespace hooks {
                     log::get()->info(
                         "PlayerTransform: pos=({:.1f},{:.1f},{:.1f}) quat=({:.3f},{:.3f},{:.3f},{:.3f}) "
                         "mgr=0x{:X} peer={} est={} {} '{}' body={}@{:X} fresh={} d={:.1f} "
-                        "act=0x{:X} ph={} hang={} fl={}",
+                        "act=0x{:X} ph={} hang={} fl={} bl={}",
                         pos.x, pos.y, pos.z, quat.x, quat.y, quat.z, quat.w, mgr,
                         remote.valid ? 1 : 0, ses.established ? 1 : 0,
                         ses.is_host ? "host" : "guest", ses.peer_name,
                         gs.have_body ? 1 : 0, gs.body,
                         gs.peer_fresh ? 1 : 0, gs.dist, g_last_anim_state,
                         (g_last_anim_state >> 16) & 0xFF, g_last_anim_state & 0xFF,
-                        (g_last_anim_state >> 8) & 0x3);
+                        (g_last_anim_state >> 8) & 0x7, (g_last_anim_state >> 24) & 0xFF);
                 } else {
                     log::get()->info("PlayerTransform: no transform yet (mgr=0x{:X})", mgr);
                 }
@@ -1520,6 +3358,23 @@ namespace hooks {
 
     void HookTraits<Tag>::on_reload(const Config &cfg) {
         g_log_hz.store(cfg.log_hz.get(), std::memory_order_relaxed);
+        g_act_scan_allowed.store(cfg.act_scan.get(), std::memory_order_relaxed);
+        {
+            const auto parse_key = [](const std::string &s, std::atomic<std::uint32_t> &lo,
+                                      std::atomic<std::uint32_t> &hi) -> void {
+                unsigned a = 0, b = 0;
+                if (std::sscanf(s.c_str(), "%8x:%8x", &a, &b) == 2) {
+                    lo.store(a, std::memory_order_relaxed);
+                    hi.store(b, std::memory_order_relaxed);
+                } else {
+                    lo.store(0, std::memory_order_relaxed);
+                    hi.store(0, std::memory_order_relaxed);
+                }
+            };
+            parse_key(cfg.adopt_only.get(), g_adopt_only_lo, g_adopt_only_hi);
+            parse_key(cfg.adopt_skip.get(), g_adopt_skip_lo, g_adopt_skip_hi);
+            g_adopt_max.store(cfg.adopt_max.get(), std::memory_order_relaxed);
+        }
 
         games::ac::blackflag::coop::NetConfig net;
         net.enabled = cfg.coop_enabled.get();
@@ -1539,12 +3394,39 @@ namespace hooks {
         games::ac::blackflag::coop::configure(net);
         games::ac::blackflag::coop::ghost::set_enabled(cfg.body_drive.get());
         games::ac::blackflag::coop::ghost::set_anim_drive(cfg.anim_drive.get());
+        games::ac::blackflag::coop::ghost::set_anim_probe(cfg.anim_probe.get());
         games::ac::blackflag::coop::ghost::set_api_move(cfg.api_move.get());
         games::ac::blackflag::coop::ghost::set_params(cfg.body_min_children.get(),
                                                       static_cast<float>(cfg.body_max_dist.get()));
         g_clone_test.store(cfg.clone_test.get(), std::memory_order_relaxed);
+        {
+            const bool on = cfg.clone_live.get();
+            if (on && !g_clone_live.load(std::memory_order_relaxed)) {
+                g_clone_live_stage = 0; // rising edge re-arms the one-shot
+            }
+            g_clone_live.store(on, std::memory_order_relaxed);
+        }
+        {
+            const bool on = cfg.spawn_test.get();
+            if (on && !g_spawn_test.load(std::memory_order_relaxed)) {
+                g_spawn_test_done = false; // rising edge re-arms the one-shot
+            }
+            g_spawn_test.store(on, std::memory_order_relaxed);
+        }
+        {
+            const bool on = cfg.adopt_test.get();
+            if (on && !g_adopt_test.load(std::memory_order_relaxed)) {
+                g_adopt_armed   = true; // v19 rising edge: pre-create on the next tick
+                g_adopt_created = false;
+            }
+            if (!on) {
+                g_adopt_armed = false;
+            }
+            g_adopt_test.store(on, std::memory_order_relaxed);
+        }
         g_cull_watch.store(cfg.cull_watch.get(), std::memory_order_relaxed);
         games::ac::blackflag::coop::combat::set_enabled(cfg.combat_sync.get());
+        games::ac::blackflag::coop::nav::set_test(cfg.nav_test.get());
         games::ac::blackflag::coop::combat::set_kill_test(cfg.combat_kill_test.get());
         games::ac::blackflag::coop::overlay::set_enabled(cfg.marker_enabled.get());
         games::ac::blackflag::coop::overlay::set_params(cfg.marker_fov.get(),
@@ -1626,6 +3508,23 @@ namespace hooks {
             }
         }
 
+        // NavWatch (dev): read-only hooks capturing real navigation calls (targets as templates).
+        // Enable with [Coop] NavWatch=true.
+        if (games::ac::blackflag::registry().config<Tag>().nav_watch.get()) {
+            games::ac::blackflag::coop::nav::install_watch(base);
+        }
+
+        // SpawnWatch (dev): read-only hook capturing the streamer's own spawn calls (hash harvest).
+        if (games::ac::blackflag::registry().config<Tag>().spawn_watch.get()) {
+            auto h = mem::make_hook<ProbeSpawnCall>(base + 0x1FD730);
+            if (!h) {
+                log::get()->error("SpawnWatch: hook failed: {}", h.error());
+            } else {
+                g_probe_spawn_call = std::move(*h);
+                log::get()->info("SpawnWatch: streamer spawn hooked @0x{:X}", base + 0x1FD730);
+            }
+        }
+
         // B1: node-ctor probe (FUN_0052a4a0, RVA 0x12A4A0) - logs spawn callers at load.
         const auto probe_addr = base + 0x12A4A0;
         auto       probe      = mem::make_hook<ProbeNodeCtor>(probe_addr);
@@ -1677,10 +3576,16 @@ namespace hooks {
         install_probe("job-desc", 0x62DBD0, &g_probe_jobdesc, ProbeJobDesc {});
         install_probe("job-ctx", 0x62D4F0, &g_probe_jobctx, ProbeJobCtx {});
         install_probe("alloc", 0x638120, &g_probe_alloc, ProbeAlloc {});
+        install_probe("new", 0x6359C0, &g_probe_inst, ProbeNew {});
+        // v11 entctor hook REVERTED: hooking the Entity ctor (0x52B750) hung the game at
+        // startup (windowless, log stopped right after plugin init). Do not re-enable as-is.
         install_probe("copy", 0x103600, &g_probe_copy, ProbeCopy {});
         install_probe("spawnapi", 0x1FD730, &g_probe_spawnapi, ProbeSpawnApi {});
         install_probe("spawnret", 0x202CE0, &g_probe_spawnret, ProbeSpawnRet {});
         install_probe("masscreate", 0x6201A0, &g_probe_masscreate, ProbeMassCreate {});
+        install_probe("reqwatch", 0x16D9190, &g_probe_reqwatch, ProbeReqWatch {});
+        install_probe("animapply", 0x16C1AD0, &g_probe_animapply, ProbeAnimApply {});
+        install_probe("animwrite", 0x16B52C0, &g_probe_animwrite, ProbeAnimWrite {});
         g_jobenq_addr = base + 0x639360; // FUN_00a39360 - patched to ret 0x14 during the clone
 
         on_reload(games::ac::blackflag::registry().config<Tag>());

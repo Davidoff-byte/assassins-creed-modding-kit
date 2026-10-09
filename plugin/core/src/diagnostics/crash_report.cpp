@@ -241,6 +241,14 @@ namespace diagnostics {
     }
 
     void log_crash_report_lightweight(EXCEPTION_POINTERS *ep) {
+        // Rate-limit exception storms (probing loops etc.): flooding the log both hides the
+        // real first fault and stalls the faulting thread. Keep the first 200, then every 512th.
+        static volatile LONG s_veh_seen = 0;
+        const auto           seen = static_cast<std::uint32_t>(InterlockedIncrement(&s_veh_seen)) - 1U;
+        if (seen >= 200U && (seen % 512U) != 0U) {
+            return;
+        }
+
         auto *rec    = ep->ExceptionRecord;
         auto  code   = static_cast<std::uint32_t>(rec->ExceptionCode);
         auto *ctx    = ep->ContextRecord;

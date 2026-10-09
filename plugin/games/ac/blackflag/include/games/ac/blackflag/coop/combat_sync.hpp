@@ -18,8 +18,8 @@ namespace games::ac::blackflag::coop::combat {
     void set_kill_test(bool on);
 
     // Called once per frame from the PlayerTransform hook (game thread). Internally
-    // rate-limited (5 Hz logic, incremental scans).
-    void tick();
+    // rate-limited (5 Hz logic, incremental scans). The heavy scans only run in-world.
+    void tick(bool in_world);
 
     // Handle one received coop event (call from the net drain loop). Applies NPC combat
     // events to the local world (position + max-HP matching).

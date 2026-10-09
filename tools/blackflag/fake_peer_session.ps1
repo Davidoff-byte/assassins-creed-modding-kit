@@ -59,7 +59,16 @@ function GetPlayerFeet {
 "game pid = $pidG (feet tracking $(if ($h -eq [IntPtr]::Zero) { 'OFF' } else { 'ON' }))"
 
 $udp = New-Object System.Net.Sockets.UdpClient
-$udp.Client.Bind((New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, $MyPort)))
+$bound = $false
+for ($i = 0; $i -lt 10 -and -not $bound; $i++) {
+  try {
+    $udp.Client.Bind((New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, $MyPort)))
+    $bound = $true
+  } catch {
+    Start-Sleep -Milliseconds 700
+  }
+}
+if (-not $bound) { "FATAL: could not bind udp/$MyPort (port held?)"; exit 1 }
 $dst = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse("127.0.0.1"), $PluginPort)
 "fake peer: role=$Role name='$Name' bind=$MyPort -> plugin $PluginPort (localhost)"
 "           press Ctrl+C to stop; duration ${DurationSec}s"
@@ -68,6 +77,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 [int]$rxHello=0; [int]$rxWelcome=0; [int]$rxPlayer=0; [int]$rxEvent=0
 [uint32]$maxPluginEventId=0; [uint32]$maxSeenAck=0
 $killSent = $false
+$lastAnim = 0
 [bool]$established = $false
 [uint32]$seq=0; [uint32]$evId=0
 [int]$dupSent=0
@@ -152,6 +162,9 @@ while ($sw.Elapsed.TotalSeconds -lt $DurationSec) {
             if ($pkt.Length -ge 72) {
               $ack = [BitConverter]::ToUInt32($pkt, 68)
               if ($ack -gt $maxSeenAck) { $maxSeenAck = $ack }
+              # live player anim state (blend<<24|phase<<16|flags<<8|hang) -> echo back as ours,
+              # so the plugin's ghost mirrors the player in solo parkour tests
+              $lastAnim = [BitConverter]::ToUInt32($pkt, 60)
             } }
         3 { $rxEvent++
             $eid = [BitConverter]::ToUInt32($pkt, 20)
@@ -189,8 +202,9 @@ while ($sw.Elapsed.TotalSeconds -lt $DurationSec) {
     Send-Hello; $lastHello = $now
   }
 
-  # once established: Player samples at 20 Hz - circle the live player when readable
-  if ($established -and ($now - $lastSamp) -ge 50) {
+  # once plugin packets are seen (or handshake completed): Player samples at 20 Hz -
+  # circle the live player when readable. (Samples also carry the event ack.)
+  if (($established -or $rxPlayer -gt 0) -and ($now - $lastSamp) -ge 50) {
     $feet = GetPlayerFeet
     if ($feet -and ([Math]::Abs($feet.x) + [Math]::Abs($feet.y) -gt 20 -or $feet.z -lt -1)) {
       $tick50++
@@ -201,6 +215,7 @@ while ($sw.Elapsed.TotalSeconds -lt $DurationSec) {
       $hang  = [int](($tick50 / 200) % 2)
       $fl    = [int](($tick50 / 100) % 2)
       $anim  = [uint32](([uint32]$phase -shl 16) -bor ([uint32]$fl -shl 8) -bor [uint32]$hang)
+      if ($lastAnim -gt 0) { $anim = $lastAnim } # parkour mirror: echo the live player state
       $qz    = [single][Math]::Sin($angle / 2.0)
       $qw    = [single][Math]::Cos($angle / 2.0)
       Send-Player $maxPluginEventId $px $py $pz $anim $qz $qw
@@ -227,7 +242,7 @@ while ($sw.Elapsed.TotalSeconds -lt $DurationSec) {
   }
 
   # optional one-shot crafted NPC kill (kind 5) for the RX test
-  if ($SendKill -ne "" -and $established -and -not $killSent -and ($now / 1000) -ge $SendKillAfterSec) {
+  if ($SendKill -ne "" -and ($established -or $rxPlayer -gt 0) -and -not $killSent -and ($now / 1000) -ge $SendKillAfterSec) {
     $killSent = $true
     $parts = $SendKill.Split(",")
     $ms = New-Object System.IO.MemoryStream

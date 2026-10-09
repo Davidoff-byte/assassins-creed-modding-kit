@@ -12,6 +12,11 @@
 
 #include "core/mem/write.hpp"
 
+#include <array>
+#include <atomic>
+#include <cstdio>
+#include <string>
+
 namespace games::ac::blackflag::coop::ghost {
     namespace {
         // Character node class in AC4BFSP (see bf-coop/MODLOG.md 2026-10-06):
@@ -85,6 +90,13 @@ namespace games::ac::blackflag::coop::ghost {
         std::int64_t   g_qpc_freq    = 0;
         int            g_log_counter = 0;
         int            g_anim_log    = 0;
+        std::uint32_t  g_anim_last   = 0; // last packed state written to the ghost controller
+
+        // --- GhostAnimProbe (read-only, route-2 anim hunt) --------------------------------
+        std::atomic<bool> g_anim_probe {false};
+        std::uintptr_t    g_ap_last_obj  = 0;
+        std::int64_t      g_ap_last_qpc  = 0;
+        int               g_ap_log_count = 0;
         float          g_last_lx     = 0.0F;
         float          g_last_ly     = 0.0F;
 
@@ -137,38 +149,44 @@ namespace games::ac::blackflag::coop::ghost {
             if (!readable(addr, 0x90)) {
                 return false;
             }
-            const auto vt = mem::read<std::uint32_t>(addr);
-            if (vt != k_body_vtable && vt != static_cast<std::uint32_t>(g_fake_vt)) {
+            // Guarded: a streaming pass can free the body between the check above and
+            // these reads; a fault here must not kill the frame hook.
+            __try {
+                const auto vt = mem::read<std::uint32_t>(addr);
+                if (vt != k_body_vtable && vt != static_cast<std::uint32_t>(g_fake_vt)) {
+                    return false;
+                }
+                if (mem::read<std::uint32_t>(addr + 0x68) != k_body_marker) {
+                    return false;
+                }
+                if (std::fabs(mem::read<float>(addr + 0x7C) + 0.5F) > 0.02F) {
+                    return false;
+                }
+                if (mem::read<std::uint16_t>(addr + 0x66) < static_cast<std::uint16_t>(g_min_children)) {
+                    return false;
+                }
+                const auto x = mem::read<float>(addr + 0x40);
+                const auto y = mem::read<float>(addr + 0x44);
+                const auto z = mem::read<float>(addr + 0x48);
+                if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+                    return false;
+                }
+                if (std::fabs(x) > 9000.0F || std::fabs(y) > 9000.0F || z < -200.0F || z > 300.0F) {
+                    return false;
+                }
+                const auto dx = x - lx;
+                const auto dy = y - ly;
+                const auto d  = std::sqrt(dx * dx + dy * dy);
+                if (out_dist != nullptr) {
+                    *out_dist = d;
+                }
+                if (want_dist && d < k_pick_min_dist) {
+                    return false;
+                }
+                return true;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
                 return false;
             }
-            if (mem::read<std::uint32_t>(addr + 0x68) != k_body_marker) {
-                return false;
-            }
-            if (std::fabs(mem::read<float>(addr + 0x7C) + 0.5F) > 0.02F) {
-                return false;
-            }
-            if (mem::read<std::uint16_t>(addr + 0x66) < static_cast<std::uint16_t>(g_min_children)) {
-                return false;
-            }
-            const auto x = mem::read<float>(addr + 0x40);
-            const auto y = mem::read<float>(addr + 0x44);
-            const auto z = mem::read<float>(addr + 0x48);
-            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
-                return false;
-            }
-            if (std::fabs(x) > 9000.0F || std::fabs(y) > 9000.0F || z < -200.0F || z > 300.0F) {
-                return false;
-            }
-            const auto dx = x - lx;
-            const auto dy = y - ly;
-            const auto d  = std::sqrt(dx * dx + dy * dy);
-            if (out_dist != nullptr) {
-                *out_dist = d;
-            }
-            if (want_dist && d < k_pick_min_dist) {
-                return false;
-            }
-            return true;
         }
 
         auto is_skipped(std::uintptr_t p) -> bool {
@@ -275,28 +293,35 @@ namespace games::ac::blackflag::coop::ghost {
                 if (stop > p + budget) {
                     stop = p + budget;
                 }
-                for (; p + 4 <= stop; p += 4) {
-                    if (mem::read<std::uint32_t>(p) == k_body_vtable) {
-                        if (is_skipped(p)) {
-                            continue;
-                        }
-                        float local_dist = 0.0F;
-                        if (!valid_body(p, lx, ly, true, &local_dist)) {
-                            continue;
-                        }
-                        const auto bx = mem::read<float>(p + 0x40);
-                        const auto by = mem::read<float>(p + 0x44);
-                        const auto ddx = bx - tx;
-                        const auto ddy = by - ty;
-                        const auto d   = std::sqrt(ddx * ddx + ddy * ddy);
-                        if (d > g_max_dist) {
-                            continue;
-                        }
-                        if (d < g_best_d) {
-                            g_best   = p;
-                            g_best_d = d;
+                // Guarded: the game can decommit pages between the VirtualQuery above and
+                // these reads (observed live: an unguarded sweep hit a racing decommit and
+                // disabled the frame hook). A fault = skip the rest of this region.
+                __try {
+                    for (; p + 4 <= stop; p += 4) {
+                        if (mem::read<std::uint32_t>(p) == k_body_vtable) {
+                            if (is_skipped(p)) {
+                                continue;
+                            }
+                            float local_dist = 0.0F;
+                            if (!valid_body(p, lx, ly, true, &local_dist)) {
+                                continue;
+                            }
+                            const auto bx = mem::read<float>(p + 0x40);
+                            const auto by = mem::read<float>(p + 0x44);
+                            const auto ddx = bx - tx;
+                            const auto ddy = by - ty;
+                            const auto d   = std::sqrt(ddx * ddx + ddy * ddy);
+                            if (d > g_max_dist) {
+                                continue;
+                            }
+                            if (d < g_best_d) {
+                                g_best   = p;
+                                g_best_d = d;
+                            }
                         }
                     }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    // skip the rest of this region; accounting below uses `stop`
                 }
                 budget -= stop - (g_cursor > base ? g_cursor : base);
                 g_cursor = stop;
@@ -346,6 +371,14 @@ namespace games::ac::blackflag::coop::ghost {
             log::get()->info("GhostBody: anim drive {}", on ? "on" : "off");
         }
         g_anim_drive = on;
+    }
+
+    void set_anim_probe(bool on) {
+        std::lock_guard lock(g_drive_mtx);
+        if (g_anim_probe.load(std::memory_order_relaxed) != on) {
+            log::get()->info("GhostBody: anim probe {}", on ? "on" : "off");
+        }
+        g_anim_probe.store(on, std::memory_order_relaxed);
     }
 
     void set_api_move(bool on) {
@@ -556,33 +589,103 @@ namespace games::ac::blackflag::coop::ghost {
             }
         }
 
-        // P3: replay the peer's packed action state onto the body's controller.
-        // Layout matches the B4 read side (player ctl = node+0xE8; same class here):
-        //   +0x8E0 phase (u8) · +0x8D8 hang (u8) · flags bit0 of +0x138 / bit1 of +0x8D0.
-        // The NPC's own AI may fight these writes; the live test decides.
-        if (g_anim_drive && remote.anim_state != 0) {
+        // P3 (B4 play side): replay the peer's packed locomotion fields onto the body's
+        // controller. Packet layout: blend<<24 | phase<<16 | flags(3)<<8 | hang.
+        // Controller layout (crowd node+0xE8 -> ctl; same class as the player's):
+        //   +0x8D4 blend (u8) · +0x8D8 hang (u8) · +0x8E0 phase (u8)
+        //   +0x138 bit0 · +0x8D0 bit0 / bit8 = the three flag bits.
+        // Writes are change-gated (the controller must not be hammered every frame) and
+        // readability-checked before any store.
+        if (g_anim_drive && remote.anim_state != 0 && g_peer_fresh) {
             const auto ctl = mem::read<std::uintptr_t>(g_body + 0xE8);
-            if (ctl >= 0x10000 && readable(ctl + 0x8E4, 4) && readable(ctl + 0x138, 4)) {
-                const auto phase = static_cast<std::uint8_t>((remote.anim_state >> 16) & 0xFFU);
-                const auto hang  = static_cast<std::uint8_t>(remote.anim_state & 0xFFU);
-                const auto fl    = static_cast<std::uint32_t>((remote.anim_state >> 8) & 0x3U);
-                mem::write<std::uint8_t>(ctl + 0x8D8, hang);
-                mem::write<std::uint8_t>(ctl + 0x8E0, phase);
-                auto f138 = mem::read<std::uint32_t>(ctl + 0x138);
-                f138      = (f138 & ~1U) | (fl & 1U);
-                mem::write<std::uint32_t>(ctl + 0x138, f138);
-                auto f8d0 = mem::read<std::uint32_t>(ctl + 0x8D0);
-                f8d0      = (f8d0 & ~1U) | ((fl >> 1) & 1U);
-                mem::write<std::uint32_t>(ctl + 0x8D0, f8d0);
+            if (ctl >= 0x10000 && readable(ctl + 0x8D0, 0x18) && readable(ctl + 0x138, 4)) {
+                if (remote.anim_state != g_anim_last) {
+                    g_anim_last      = remote.anim_state;
+                    const auto phase = static_cast<std::uint8_t>((remote.anim_state >> 16) & 0xFFU);
+                    const auto hang  = static_cast<std::uint8_t>(remote.anim_state & 0xFFU);
+                    const auto blend = static_cast<std::uint8_t>((remote.anim_state >> 24) & 0xFFU);
+                    const auto fl    = static_cast<std::uint32_t>((remote.anim_state >> 8) & 0x7U);
+                    mem::write<std::uint8_t>(ctl + 0x8D4, blend);
+                    mem::write<std::uint8_t>(ctl + 0x8D8, hang);
+                    mem::write<std::uint8_t>(ctl + 0x8E0, phase);
+                    auto f138 = mem::read<std::uint32_t>(ctl + 0x138);
+                    f138      = (f138 & ~1U) | (fl & 1U);
+                    mem::write<std::uint32_t>(ctl + 0x138, f138);
+                    auto f8d0 = mem::read<std::uint32_t>(ctl + 0x8D0);
+                    f8d0      = (f8d0 & ~0x101U) | ((fl >> 1) & 1U) | (((fl >> 2) & 1U) << 8);
+                    mem::write<std::uint32_t>(ctl + 0x8D0, f8d0);
+                }
                 if (++g_anim_log >= 600) { // ~10 s
                     g_anim_log = 0;
-                    log::get()->info("GhostBody: anim drive ctl=0x{:X} phase={} hang={} fl={}",
-                                     ctl, phase, hang, fl);
+                    log::get()->info(
+                        "GhostBody: anim drive ctl=0x{:X} act=0x{:X} blend={} phase={} hang={} fl={}",
+                        ctl, remote.anim_state, (remote.anim_state >> 24) & 0xFF,
+                        (remote.anim_state >> 16) & 0xFF, remote.anim_state & 0xFF,
+                        (remote.anim_state >> 8) & 0x7);
                 }
             }
         }
 
-        // Occasional diagnostics; drop the body if it gets streamed away.
+        // Read-only animation-object probe (route-2 anim hunt): identifies what the crowd
+        // body's +0xE8 object is, dumps the region around the earlier fatal write (+0x880..0x97F,
+        // likely pointer table if the write caused a wild jump), and logs which 4-byte words
+        // change while the ghost is driven. Strictly READ-ONLY.
+        if (g_anim_probe.load(std::memory_order_relaxed) && g_body != 0 && g_ap_log_count < 2500) {
+            LARGE_INTEGER now {};
+            QueryPerformanceCounter(&now);
+            if (g_qpc_freq > 0 &&
+                (g_ap_last_qpc == 0 || now.QuadPart - g_ap_last_qpc >= g_qpc_freq / 3)) {
+                g_ap_last_qpc = now.QuadPart;
+                const auto obj = mem::read<std::uintptr_t>(g_body + 0xE8);
+                if (obj >= 0x10000 && readable(obj + 0x0, 0x100) && readable(obj + 0x880, 0x100)) {
+                    static std::array<std::uint32_t, 0x40> prevA {};
+                    static std::array<std::uint32_t, 0x40> prevB {};
+                    static bool                            have_prev = false;
+                    if (obj != g_ap_last_obj) {
+                        have_prev     = false;
+                        g_ap_last_obj = obj;
+                        log::get()->info("GhostAnimProbe: obj=0x{:X} vt=0x{:X} (new)", obj,
+                                         mem::read<std::uint32_t>(obj));
+                        std::string head;
+                        char        tmp[16];
+                        for (int i = 0; i < 0x40; i += 4) {
+                            std::snprintf(tmp, sizeof(tmp), "%08X ", mem::read<std::uint32_t>(obj + i));
+                            head += tmp;
+                        }
+                        log::get()->info("GhostAnimProbe: head: {}", head);
+                        std::string mid;
+                        for (int i = 0x8A0; i < 0x920; i += 4) {
+                            std::snprintf(tmp, sizeof(tmp), "%08X ", mem::read<std::uint32_t>(obj + i));
+                            mid += tmp;
+                        }
+                        log::get()->info("GhostAnimProbe: mid8A0: {}", mid);
+                    }
+                    std::string                            chg;
+                    char                                   tmp2[48];
+                    for (int i = 0; i < 0x40; i++) {
+                        const auto a = mem::read<std::uint32_t>(obj + (i * 4));
+                        const auto b = mem::read<std::uint32_t>(obj + 0x880 + (i * 4));
+                        if (have_prev && (a != prevA[static_cast<std::size_t>(i)] ||
+                                          b != prevB[static_cast<std::size_t>(i)])) {
+                            std::snprintf(tmp2, sizeof(tmp2), " +%03X:%08X", i * 4, a);
+                            chg += tmp2;
+                            std::snprintf(tmp2, sizeof(tmp2), " +%03X:%08X", 0x880 + (i * 4), b);
+                            chg += tmp2;
+                        }
+                        prevA[static_cast<std::size_t>(i)] = a;
+                        prevB[static_cast<std::size_t>(i)] = b;
+                    }
+                    if (!have_prev) {
+                        have_prev = true;
+                    } else if (!chg.empty()) {
+                        g_ap_log_count++;
+                        log::get()->info("GhostAnimProbe: obj=0x{:X} gpos=({:.1f},{:.1f},{:.1f}){}", obj,
+                                         g_x, g_y, g_z, chg);
+                    }
+                }
+            }
+        }
+
         if (++g_log_counter >= 300) { // ~5 s at 60 fps
             g_log_counter = 0;
             const auto bx  = mem::read<float>(g_body + 0x40);

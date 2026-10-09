@@ -244,7 +244,7 @@ BF MP oracle fields (`0x80/0xe8/0x128/0x1f8/0x170`, move-mode `+0x398`) → **co
   and re-bound instantly ("CoopNet: udp/27800 -> 127.0.0.1:27801 as client 1, 20 Hz"). Port 27731 is
   still held by dead PID 15952 (ghost port — reboot clears; noted for test day).
 - Kit built: dist/AC4BF-Coop-v0.2.zip — dinput8.dll + AC.BlackFlag.PatchFix.asi (SHA256 hash-identical
-  to the proven local install) + ini prefilled for B (RemoteIp1..4 = [A's Radmin IP],
+  to the proven local install) + ini prefilled for B (RemoteIp1..4 = 26.113.208.88 = A's Radmin IP,
   LocalPort 27801, RemotePort 27800, ClientId 2) + ASCII README (exact expected log lines, peer/fresh
   semantics, troubleshooting, firewall notes). v0.1 moved to dist/archive/. A-side quick sheet:
   dist/README-FOR-A.txt. New tool: tools/set-remote-ip.ps1 (-Ip [-LocalPort -RemotePort -ClientId]).
@@ -255,7 +255,7 @@ BF MP oracle fields (`0x80/0xe8/0x128/0x1f8/0x170`, move-mode `+0x398`) → **co
 - fake_peer_send.ps1 defaults updated to the new port pair (27800/27801).
 
 ## 2026-10-06 17:46 — *** MILESTONE: two-machine co-op ghost LIVE over Radmin ***
-- First real two-machine run (user A [A's Radmin IP] <-> "Suhiro" B [B's Radmin IP], ~105 ms ping, ping 3/3).
+- First real two-machine run (user A 26.113.208.88 <-> "Suhiro" B 26.45.65.81, ~105 ms ping, ping 3/3).
 - Log proof: "GhostBody: picked body 0x3784D1B0 at 61.5 m from peer" then
   "PlayerTransform: ... peer=1 body=1@3784D1B0 fresh=1 d=13.8..18.9" (distance bouncing as the peer walked).
 - User: "yesss i see him in game as an npc woman" — the driven crowd body is visible in-game from the other machine.
@@ -859,7 +859,7 @@ AnimDrive + CullWatch on, crew-member body 0x37EB8060 picked near the ship.
   later" - user).
 - v0.4 kit built for the friend test (bf-coop/dist/AC4BF-Coop-v0.4.zip): crash fixes in, AnimDrive
   OFF (the confirmed crash cause), markers OFF, C1 session + ghost on. Ports 27830/27831, friend =
-  guest 'PlayerB' vs A's [Radmin IP]. A-side deployed + configured (RemoteIp pending his IP).
+  guest 'PlayerB' vs A's 26.113.208.88. A-side deployed + configured (RemoteIp pending his IP).
 
 ## 2026-10-08 - MILESTONE: two-machine session live (v0.4)
 
@@ -1119,3 +1119,823 @@ AnimDrive + CullWatch on, crew-member body 0x37EB8060 picked near the ship.
   StateProbe captured 159 locomotion samples; no crashes; no errors.
 - NEXT: wire TX -> net event -> RX (write value/flag) with NPC position matching; add kill/damage writes
   (value+flag) into the plugin; two-machine relay test.
+
+### 2026-10-08 (10) � crash cascade diagnosis (session end)
+- Three consecutive launch crashes: AC4BFSP.exe faulting in nvwgf2um.dll (NVIDIA driver), same offset each time,
+  both before AND after the AV-storm fix, and with our activity gated to in-world only (last session: 2 plugin
+  log lines total at the menu, zero scanning -> mod exonerated).
+- First crash coincided with the (now fixed) body-sweep AV storm; the cascade since = classic degraded GPU
+  driver state. Recommended: reboot, then relaunch.
+- Deployed and parked: gated relay build 85AC2924 (CombatSync relay TX/RX + kill test off, probe off).
+- Session logs preserved under bf-coop/logs/sessions/.
+- QUEUED for next session: reboot -> launch -> in-world -> start robot peer -> TX test (hit guard ->
+  robot logs NpcCombat) -> RX test (robot kills a guard we stand at) -> labeled parkour tour -> friend kit v0.5.
+
+### 2026-10-08 (11) � PARKOUR CODE SHIPPED (B4 play side v2)
+- READ: player locomotion capture extended to blend(+0x8D4) + hang(+0x8D8) + phase(+0x8E0) + 3 flag bits
+  (+0x138 b0, +0x8D0 b0, +0x8D0 b8); packing = blend<<24 | phase<<16 | flags<<8 | hang; publishing RE-ENABLED
+  (g_act_read_enabled=true; refresh_act_ctl now caches + 10s backoff). PlayerTransform log now prints "bl=".
+- WRITE: ghost anim replay v2 in ghost_body.cpp: same packing unpacked onto the crowd controller
+  (node+0xE8 -> ctl; +0x8D4/+0x8D8/+0x8E0 + flag bits), CHANGE-GATED (write only when packed state changes),
+  readability-checked before stores; config [Coop] AnimDrive gates it (default off).
+- Field map from the live signatures (2026-10-08): walk b8=84/b10=83 � jog b10=2a � run b4=48/62 b10=2a �
+  climb b8=00 b10=00 + big vz � ascend b8=3f b10=2a � fall vz<-3 � special b4=b6.
+- Build 94D95371 deployed (game closed). Next live: reboot -> launch -> robot peer -> AnimDrive=true (hot
+  reload) -> verify no crash + visible walk/run on the ghost -> labeled tour to lock the names.
+
+### 2026-10-08 (12) � *** MILESTONE: COMBAT LOOP CLOSED OVER UDP (user-verified) ***
+- TX: player hits detected live -> NpcCombat events out over UDP (multiple guards, exact pos + HP deltas; robot log confirms).
+- RX: robot-fired kill received ("CoopNet: received event kind=5") -> matched local NPC at d=0.4 m -> raw-write kill applied
+  ("CombatSync: RX KILL 0x458C5120 ok=true") -> target state LIFE=65535/FLAGS=01000004 -> guard dropped (user: "yup hes dead").
+- Found+fixed: UDP port zombie (dead pid held 27853; SO_REUSEADDR co-bind made delivery ambiguous) -> moved to 27953/27954 pair;
+  robot now has bind-retry. Note for later: audit SO_REUSEADDR co-bind behaviour.
+- Known gap: instant assassinations (back-hit kills) can clean up their health object faster than the 5 Hz poll -> no TX.
+  Fix options: raise poll rate near the player / hook the death-flag write (probe) / relay "object vanished near player" heuristics.
+- NEXT: parkour mirror test (AnimDrive + robot echoing the live player anim state).
+
+### 2026-10-08 (13) � AnimDrive crash RCA: wrong write target on crowd bodies
+- Session 16:05:41: ghost driven + anim drive active. First write 16:10:48 (ctl=0x45AD9030 read from body+0xE8),
+  game crashed 16:10:51 in an unmapped/wild-jump address (WER module "unknown"), zero VEH in our module.
+- CONCLUSION: for crowd bodies, body+0xE8 is NOT the player-style controller; writing phase/hang/blend there
+  corrupts an unrelated object -> crash. The player-node chain (node+0xE8 -> ctl at +0x8D4..) is player-specific.
+- AnimDrive set to false in the ini (game safe). The crowd body's real animation interface must be FOUND, not assumed:
+  next RE = probe the crowd body: dump body+0xE8's class (resolver), watch ITS fields while the NPC walks
+  (StateProbe-style sampler on the ghost body), find the actual locomotion/anim write surface.
+- Everything else unaffected: ghost follow/drive works (err=0.00), combat relay proven, TX/RX fine.
+
+### 2026-10-08 (14) � GhostAnimProbe built (route-2: crowd anim interface hunt, read-only)
+- New ini switch [Coop] AnimProbe (default false, hot-reloadable). When on, the ghost tick samples
+  the ghost body's +0xE8 object at ~3 Hz:
+  * one-shot per object: vtable + 0x00..0x3F head dump + 0x8A0..0x91F dump (covers the fatal
+    write area +0x8D4/8D8/8E0 � if pointers live there, that explains the wild-jump crash).
+  * continuous: 4-byte diff of +0x000..0x0FF and +0x880..0x97F vs previous sample, with the
+    ghost's world position attached � movement-active fields show up as changes.
+  * cap 2500 lines; zero writes anywhere.
+- Companion logger: refresh_act_ctl now logs the PLAYER controller (ActCtl lines: ctl, vt, head)
+  once per object � direct class comparison vs the ghost object (same vt = same class ? the
+  crash was field misuse; different vt = wrong-object assumption confirmed).
+- Build D9B310E1EF70BDE77BE45A48C35E295C deployed (game closed). Test flow: launch -> load save,
+  robot on 27964->27963 drives ghost, set AnimProbe=true (hot reload), walk/run ~30 s, read log.
+  Offline: resolve ghost obj vt via bf-coop/logs/ai/vt_class_map.txt; correlate diff offsets.
+
+### 2026-10-08 (15) � FREEZE ROOT CAUSE: act-controller full-memory rescan every 10 s (game-thread stall)
+- Log gap analysis of the 16:16-16:21 session: log stops for ~2.5-3.6 s on a strict ~10.0 s cadence
+  (16:17:02.8, :12.9, :23.1, :33.0, :42.98, :53.06, ...). PlayerTransform logs at 2 Hz, so the game
+  thread itself was stalled ~3 s every ~10 s. This matches the user report "freezes every few seconds".
+- Mechanism: refresh_act_ctl() had `rescan = dt > freq * 10` where dt is measured since the LAST SCAN
+  and the early-return path never updates the timestamp -> a full-address-space rescan every 10 s by
+  design. When no controller is known (menus!) there was NO rate limit at all -> back-to-back scans.
+  find_player_ctl walks 0x10000..0x7FFF0000 byte-by-byte; the 90 ms budget only checks per memory
+  REGION, so one big heap region scans for seconds.
+- This is also the prime suspect for the recurring nvwgf2um.dll+0xcb0e47 crashes (6 today, including
+  before any probe existed): multi-second submission stalls at menus (already ~0.1 FPS) or mid-game
+  (16:21:53->:57 freeze immediately preceded the crash).
+- FIX (build D9B310E1 replaced):
+  * refresh_act_ctl: fast path = cached ctl + live node -> never scan. Otherwise rate-limited rescans:
+    3 s base, x1..x6 backoff to 20 s on consecutive misses (protects menus/loading).
+  * find_player_ctl: two-pass (character heap 0x30000000-0x54000000 first, full range only as fallback).
+- User relaunch planned to verify: no more periodic freezes; then re-test menus/appearance.
+
+### 2026-10-08 (16) � NAVIGATION DECODED: CSrvNavigation::NavigateTo (natural walking route)
+- The ghost is a crowd NPC (BhvGenericNPC) driven by transform teleports -> slides, no walk anims.
+  The engine's own NPC locomotion = per-NPC CSrvNavigation service + NavigationTarget commands.
+- Full research banked in logs/ai/NAV_RESEARCH.md. Highlights:
+  * PC class id: crc32("CSrvNavigation") = 0x6328D910 (scheme verified vs CSrvNPCHealth).
+  * PS3 gold map gives the API: NavigateTo(target, speed, bool, bool, contextID); vtable slot 54
+    (NavigateToNavTarget thunk) = same signature; NavigateCancel slot 20; IsTargetReached slot 76.
+  * NavigationTarget layout from PS3 accessor disasm: +0x00 type (1=Position), +0x10 Vector4 pos,
+    +0x20 reach float, ctor-set defaults at +0x24/+0x50../+0xC0/+0xD8; size ~0xE0.
+  * Enums: NavigationSpeed (4=Regular, 6=Fast), NavigationContextID (0=Casual, 1=FOLLOW,
+    -1=NOT_DEFINED), MovementType (-1/0/1).
+- Node service chain for instance finding: body+0x114 -> P, services base@P+0x70 size@P+0x76.
+- Next: find ghost's instance at runtime, verify PC slot 54, build target (copy-from-live preferred),
+  test call on a plain villager first, then wire NavDrive (walk-to-peer) with teleport fallback.
+- Tools added: tools/dwarf_query.py (targeted DWARF query), logs/dwarf_query_nav.txt (raw dump).
+- Also this session: freeze bug fixed+verified ("game feels fine"), probe session proved ghost
+  behaviour object = BhvGenericNPC (vs player BhvAssassin) - different class killed the earlier
+  anim write (crash), plan pivoted to navigation-based movement.
+
+### 2026-10-08 (17) � NAVIGATION: PC addresses VERIFIED live (NavigateTo callable)
+- Found a live CSrvNavigation instance on PC (health-anchor chain: CSrvNPCHealth vt 0x02712F60 ->
+  owner +0x20 -> P -> vec@P+0x70 -> resolve -> id 0x6328D910). Instance vt = 0x026F4B70,
+  service example 0x4B00D1B0.
+- Dumped the full PC vtable + disassembled:
+  * PC NavigateTo = 0x01785ED0 (thiscall+stdcall, 5 args, ret 0x14). NavigateToNavTarget = thunk
+    @0x01785FF0 (PC slot 51). PC slots shifted -3 vs PS3 in the accessor region (verified via
+    GetSpeed/GetDesiredSpeed float getters at slots 20/21 -> [+0x3C0]/[+0x3C4]).
+  * PC NavigationTarget::Validate = 0x512160; layout confirmed IDENTICAL to PS3 (type@+0,
+    Vector4 pos@+0x10, handle@+0x24) � Validate checks x/y/z finiteness per component.
+  * PC NavigateCancel = slot 17 (uses pattern@+0x84, flag @+0x8C, +0x160);
+    GetNavigationCommands = slot 18 (lea eax,[ecx+0x160]); pattern NPCNavigation called via
+    0x61F180 (ctx=-1) / 0x624410 (ctx given); speed applied via vtable [+0xE0].
+- Call plan banked in logs/ai/NAV_RESEARCH.md (target struct build, game-thread-only caution,
+  first test = navigate a guard 10 m, then ghost NavDrive). Harness = plugin dev flag + build
+  (needs game closed to deploy).
+- Crowd-body caveat: 40 scanned crowd bodies had no CSrvNavigation via the +0x114 chain ->
+  next probe: sniff BhvGenericNPC (body+0xE8) for its service vector.
+- Nothing deployed this round (game running, all read-only). Freeze fix holding; user: "game feels fine".
+
+### 2026-10-08 (18) � NavTest build deployed (first NavigateTo call test)
+- New module coop/nav_drive.cpp + [Coop] NavTest (one-shot dev, default false, hot-reloadable).
+  Flow when armed: incremental CSrvNPCHealth scan (8 MB/frame) -> +0x20/+0x28 -> P ->
+  vec@+0x70/+0x68 -> class-id resolve -> first CSrvNavigation (0x6328D910) -> build NavigationTarget
+  {type=1, pos=player, reach=0.5, +0x40 sentinel} in our own 16-aligned scratch buffer ->
+  SEH-guarded __thiscall call NavigateTo @RVA 0x1385ED0 (speed=4 Regular, boolA=0, boolB=0, ctx=-1).
+  Game-thread only (called from the PlayerTransform hook, inside the guarded callback).
+- Logs: "NavTest: health=... P=... nav=..." then "NavigateTo rc=..." (0=accepted, 7=invalid, -1=fault).
+- Deploy md5 (see log line). Test: launch -> in world -> NavTest=true -> watch the NPC walking.
+
+### 2026-10-08 (19) � NavTest v2: multi-anchor resolve + diagnostics (deployed)
+- First live run: plugin found 1 health anchor and gave up when it didn't resolve ("1 candidates,
+  none resolved"). External tool confirmed the chain itself works (found nav=0x3444A5E0 live).
+- v2: scan keeps growing a 64-candidate pool (8 MB/frame) while trying every not-yet-tried anchor;
+  per-fail diagnostics for the first 6 ("anchor no-nav P20/P28/vec/resolved=N"); readable() guard
+  added on the 0xA1 descriptor read. Deployed while game closed; NavTest parked false.
+
+### 2026-10-08 (20) � NavTest v3 + NavWatch deployed (fault forensics + real-target templates)
+- v2 result: anchor resolution worked (nav=0x380CA280 found), but the NavigateTo call FAULTED
+  (rc=-1; SEH caught it; game survived). No crash, no VEH storm.
+- v3 adds:
+  * exception capture: logs fault code + faulting address as exe+RVA (nav_exc_filter).
+  * Validate precheck: calls PC NavigationTarget::Validate @RVA 0x112160 on our built target
+    before NavigateTo (1/0/-1), isolating target-shape problems from deeper path-engine faults.
+  * template mode: [Coop] NavWatch (boot-gated read-only MidHooks) captures real engine calls:
+    CSrvNavigation::NavigateTo @0x1785ED0 and NPCNavigation::NavigateTo @0x61F180 / @0x624410,
+    logging args (target/speed/bools/ctx) + caller RVA; position-type targets are saved as a
+    byte-exact template (0xE0) that NavTest copies and patches (type=1/pos/reach) - so every
+    unknown field is engine-correct.
+- ini parked: NavTest=false, NavWatch=true. Deploy md5 in log line. Flow: relaunch -> play ~30 s
+  (captures) -> flip NavTest live -> read rc/validate/fault-addr.
+
+### 2026-10-08 (21) � NavTest: the ENGAGE fix (boolB=1) + type-1 templates
+- Fire #1 rc=0 accepted; the NPC (health 0x34245120, nav 0x342430E0, body 0x470CD960) later
+  wandered on its own but did NOT move on fire #2 (target=player, 9 m away) for 40 s.
+  Command accepted but never engaged.
+- NavWatch analysis of the engine's own 60 NavigateTo calls: ALWAYS A=0 B=1
+  (speed 4 x48 / 3 x9 / 5 x3; ctx -1 or 0). Our calls used B=0 -> skipped the can-navigate
+  precheck + command-activation branch ([vt+0xB8] + call 0x40b560). Fix: call with B=1.
+- Template capture now type-1 only (walk targets); previous template was a type-2 capture.
+- Verification tooling proven: NPC body found via pointer scan (0x470CD960); nav object +0x10C
+  tracks the entity's live position; +0x230/+0x5A0/+0x5C0 hold targets/waypoints; slot20/21
+  getters read [+0x3C0]/[+0x3C4] (1.778 constant for idle - not a movement indicator).
+
+### 2026-10-08 (22) � NavTest v4: closest-NPC pick + per-nav templates + command hold
+- v3 (B=1, type-1 template) result: rc=0 accepted, still no movement (NPC nav +0x10C static
+  50 s; second NPC 45 m away). The engine's own calls come from CSrvNavigation wrappers
+  (caller +0x139376C / +0x186F647), not from raw NavigateTo.
+- v4 changes: (1) resolve ALL candidate navs (up to 8), pick the one whose nav+0x10C entity
+  position is CLOSEST to the player (visible + most likely streamed/simulated); (2) per-nav
+  target templates (captures keyed by the calling nav instance; a nav's own call carries its
+  spatial frame) with global type-1 fallback; (3) command hold: re-issue every ~1.5 s x5 with
+  alternating boolA (0/1), logging rc + entity position each attempt, so movement (or its
+  absence) is visible directly in the log.
+
+### 2026-10-08 (23) � NavTest: rc=3 clue + moving-NPC pick (v5)
+- v4 result: chosen closest nav (35 m) - attempts alternate: A=0 -> rc=3 (can-navigate precheck
+  REJECTS; the service statechart is in a CantNavigate state for idle NPCs), A=1 -> rc=0
+  (accepted, precheck skipped). Entity never moved across 6 attempts/8 s.
+- Conclusion: the nav service only passes/engages when the entity is already in a
+  navigation-capable state (its AI drives that state). Idle/standing NPCs refuse.
+- v5: pick the MOVING NPC - sample all resolved navs' entity positions (+0x10C), wait 0.7 s,
+  compute speed via displacement, choose the fastest mover (fallback: closest if none > 0.3 m/s),
+  then command-hold on him (6 attempts, A alternating). A moving NPC's statechart is in a
+  navigable state; our command should hijack its walk.
+
+### 2026-10-08 (24) � PS3 spawn review + CloneLive build (the never-run visibility test)
+- PS3 gold review: `CloneObject<Object>(Object*,bool)` = the clone primitive; `Entity::CloneEntity(Entity*&)`
+  = CloneObject + u64 flags@+0x50 += (0x2000|0x1000|0x100)<<32 + `Entity::UpdateLODLevel(new,0,f^2)`.
+  Callers prove runtime duplication is routine gameplay: BhvTools::InstantiateMusket/Pistol/Dagger/
+  SmokeBomb, ProjectileFactory, FX entities, Human::EnableAppleProp, weapon-inventory adds.
+  => "entities can only be made at load" was wrong for copies; a full character copy stays unproven.
+- PS3 also has the decoy stack in the SP build: CLDecoyed statechart (triggers Start/Stop/Follow,
+  state Started_Running_Gameplay_Follow) + DecoyParams; PC anchors: name-table ref 0x0166F410,
+  registry records .data 0x029C5154 / 0x02A0AF04.
+- NEW BUILD: [Coop] CloneLive (dev one-shot, game thread): scans 0x30000000-0x50000000 for
+  character-class objects (vt 0x01E4A128 / 0x01E64680 = player + story NPCs; crowd bodies use the
+  base-node vt 0x01E4CE90 and must NOT be cloned through +0xC), picks the one nearest the player,
+  calls the proven clone slot (vtable+0xC), logs src vs clone field diff (flags +0x50/54/58/5C,
+  +0x60, +0x7C), rechecks the clone at +10 s. User test: walk 5 m and look back - does a second
+  body stand where you were? (First time this visual test is actually run.)
+
+### 2026-10-08 (25) � CloneLive v2: multi-candidate attempts (healthy first)
+- v1 result: scan found ~20+ class objects (vt 0x1E4A128); picked a stale one (ch=0, f7c=-3.00);
+  clone call AV'd - SEH caught (rc=0xC0000005), game ran on. Same trap as the old "stale candidates".
+- v2: collect up to 32 candidates (skip (0,0) unplaced proxies); order healthy-first (children>0)
+  then by distance; try clone one-by-one, max 12, one attempt per 0.5 s; log every attempt
+  (cand/ch/f7c/rc/out); on success log the src/obj field diff and prompt walk-away check (+10 s
+  recheck). Also logs the player node chain (+0xC8/+0xE8) as an alternative anchor.
+- Deployed md5 (see log line).
+
+### 2026-10-08 (26) � THE CLASS MAP + CloneLive v3 (clone the player's own body node)
+- Ground truth established by full-memory class-id resolution (2-pass vt scan + crc):
+  * vt 0x1E4CE90 = class "Entity" (0x984415E) - 2788 instances = THE BODIES (crowd + player).
+    Slot +0xC = FUN_0052A980 = the NODE CLONE (disasm: self-instantiate via desc 0x275E670,
+    child-recursive deep copy FUN_00a27550, job post template 0x27F6A44). This is the mechanism
+    the crowd streamer itself uses to create bodies at runtime.
+  * vt 0x1E4A128 = "EntityGroup" (0x3F742D26) - the earlier "candidates" were EntityGroups; their
+    +0xC = FUN_00503600 (deep copy) - calling it as a clone = the 12 AVs explained.
+  * vt 0x1E64680 (clone slot 0x6DEFF0) = class 0x2F4222CA - has NO live instances
+    (decoy/mission-only) - the old "1-3 character objects" premise retired.
+  * The player's own node (find_player_ctl / g_act_node) IS an Entity instance.
+- CloneLive v3: PRIMARY = clone g_act_node (the player's body) via vt+0xC; fallback = scan a
+  nearby body (vt 0x01E4CE90, ch>=16, not the ghost) if the primary fails. Walk-away visual test.
+
+### 2026-10-08 (27) � CloneLive v4: the streamer's completion steps (activate + flush)
+- v3 result: the node clone SUCCEEDED (rc=0, obj 0x4B9F9B40, vt 0x1E4CE90, ch=20) on a crowd body
+  (try#4; player node AV'd - special; 3 earlier bodies AV'd). Clone stable +10 s. But INVISIBLE
+  (user looked, nothing) - flag diff: clone f50=0x1FD2227C vs live src 0x5F9A227C, f54 missing
+  0x03000071 bits, f5C pointer = 0.
+- Found + disassembled the streamer's own completion calls (crowd spawn recipe):
+  * FUN_00526590(node) = activate: [+0x50] |= 4|8|0x800000 then call FUN_00522610(node,0,r^2)
+    (spatial/LOD registration; handles null f5C with a default radius).
+  * FUN_00a2e820() = job flush (process the posted clone job on this thread).
+- v4: clone -> MOVE the copy 3 m east of the player -> activate -> job flush -> +10 s recheck.
+  (Modify-before-activate so registration sees the new spot.)
+
+### 2026-10-08 (28) � SpawnTest: call the streamer's own spawn (FUN_005FD730)
+- Decoded FUN_005FD730 fully: stdcall(hash); template = FUN_005fac60(hash) -> new =
+  template->vt[+0xC](template,0,0) -> FUN_00526590 activate -> FUN_00a2e820 flush; returns new.
+  So the engine's own NPC creation = clone-a-template + activate + flush (our pipeline, but
+  sourced from a template object instead of a live body).
+- New build: [Coop] SpawnTest (one-shot): calls FUN_005FD730(0x49BB47AC crowd template captured
+  live), logs the returned node + fields, moves it 2.5 m east of the player for the visual test.
+  [Coop] SpawnWatch: read-only boot hook on FUN_005FD730 capturing every streamer spawn hash
+  (harvest templates for other NPC types, e.g. guards, in other areas).
+- CloneLive invisible even after full field sync (flags, f5C/fC0 world-structure refs, scalars).
+  Remaining unsynced: +0xAC/+0xB0/+0xD4/+0xE8 per-node world links (likely linked-list slots that
+  aliasing would not fix anyway). The streamer-spawn path sidesteps all of it.
+
+### 2026-10-08 (29) � SESSION WRITE-UP: the clone/spawn arc (for the assassin partner)
+Goal of the arc: get a SECOND full character (player-class) into the world = the "proper assassin
+for co-op" the user wants. Everything below is evidence-backed.
+
+**1. What the night established (in order):**
+- The freeze fix (act rescan) shipped + user-verified; drivers stable since.
+- Body+0xE8 = the BEHAVIOR object (BhvAssassin player / BhvGenericNPC crowd) - the earlier anim
+  write crash fully explained.
+- Navigation stack fully decoded + PC-verified (NavigateTo 0x1785ED0, slots, targets, contexts);
+  NavTest calls rc=0 accepted but the engine REFUSES to move idle NPCs (precheck rc=3;
+  commands for idle entities don't engage). Moving-NPC hijack = untested variant.
+- **Class map nailed (full-memory class-id resolution, 2-pass scan):**
+  * vt 0x1E4CE90 = class "Entity" (0x0984415E), 2788 instances = ALL BODIES incl. the player's.
+  * vt 0x1E4A128 = "EntityGroup" (0x3F742D26) - the old fake "character candidates".
+  * vt 0x1E64680 = class 0x2F4222CA (complete sync+async clone slots) - NO live instances.
+- **Entity node clone (vt+0xC = FUN_0052A980) live-proven:** crowd-body copies succeed (rc=0,
+  real node, stable 10 s+); stale bodies + the PLAYER's node AV (SEH-caught).
+- **The copy is INVISIBLE (root cause):** a raw node copy has NO GRAPHICS - the visual is built
+  at spawn by the graphic factory (the parked outfit path); field syncs (flags, f5C/fC0 shared
+  structure, scalars) do not fix it. Unregistered copies also get FREED by the engine after a
+  while (pin tech exists).
+- **Streamer spawn FUN_005FD730 decoded:** fast path = template-handle poll; slow path =
+  clone-template(vt+0xC) -> activate (FUN_00526590: +0x50 |= 4|8|0x800000 + FUN_00522610
+  spatial/LOD) -> flush (FUN_00a2e820). Our calls returned 0 (template-handle validity fails at
+  call time) with both the old hash (0x49BB47AC) and the live one (0x479DB35C).
+  SpawnWatch (read-only hook) captures per-area template hashes live - HARVESTABLE for other
+  NPC types.
+- **The decoy stack exists in SP:** CLDecoyed statechart (triggers Start/Stop/Follow; state
+  Started_Running_Gameplay_Follow) + DecoyParams; PC name-table ref at 0x0166F410; registry
+  records .data 0x029C5154 (CLDecoyed) / 0x02A0AF04 (DecoyParams). Activation path unmapped.
+
+**2. THE QUEUED TEST (built, deployed NOT yet - build sitting in build-x86):**
+CloneLive v5 = the ASYNC clone (`Entity vt+0x8` = serialize + engine-side deserialize = the
+notes' documented "complete renderable character" path; NEVER yet run on a free-roam save).
+v5: async-clone the player node (or a crowd body with a +3 m source-offset spot trick) -> find
+the copy -> move to player -> activate -> flush -> look. procedure: close game -> copy the
+fresh build -> in-world -> CloneLive=true -> walk/look.
+
+**3. Build/deploy state:** deployed asi = 208344A7 (SpawnTest/hash build). Newest built (NOT
+deployed): CloneLive v5 async build (build-x86). Ini: SpawnTest=false, SpawnWatch=true,
+SpawnHash=47CD5ECC (update per area from SpawnWatch), NavWatch=true, NavTest=false,
+CloneLive=false, CombatSync=true, AnimDrive/AnimProbe=false.
+
+**4. The wall(s), honestly:**
+- VISIBLE second character: (a) async clone (untested, the best shot), (b) the graphic
+  factory/rebuild path (parked outfit project - heavy), (c) the decoy activation (unmapped).
+- WALKING on command: AI state gate (commands don't engage idle NPCs; moving-NPC hijack untested).
+- Keep-alive: pin tech exists (ghost).
+
+**5. Options ladder (next sessions):**
+1. Run the async clone test (minutes; highest-value single test).
+2. Harvest SpawnWatch hashes in interesting areas (hideout = assassin NPCs!) and try
+   FUN_005FD730 there (the spawn path may work when the template is actually loaded).
+3. The decoy deep-dive (PC CLDecoyed activation via the 0x0166F410 anchor + registry records).
+4. Friend kit v0.5 for the two-machine test with Suhiro (the practical co-op deliverable:
+   follower + combat + freeze-fixed build).
+5. Cleanups: SO_REUSEADDR audit, port hygiene, DamageProbe bisect.
+
+### 2026-10-08 (30) � 30-MINUTE AUTONOMOUS DIG: decoy closed (SP), spawn-call bug root-caused + fixed build
+Clock: window 17:59-18:29. Deliverables, evidence-backed:
+
+**1. THE DECOY DOOR IS CLOSED FOR SP (definitive, two ways):**
+- PS3 SP map: 324 CLDecoy* symbols = ONLY the CLDecoyed statechart + ICLDecoyed internals. ZERO `CLDecoyNpc*`, zero `SpawnDecoy`, zero `AbilityDecoy`.
+- MP exe HAS the full family: `AbilityDecoy`, `CLDecoy`, `CLDecoyNpcRun`, `CLDecoyNpcAttack`, net messages
+  (OnSendDecoyToEntity, C2S/S2C), `DecoyLure`, HUD icons. The decoy-NPC spawn machinery is MP-linked-out
+  of the SP binary. The SP CLDecoyed = a vestigial shell (its driver classes do not exist).
+- Decoded anyway (for the record): CLDecoyed ctor @0x1686B30 -> vtable 0x26E0800; class id =
+  crc32("CLDecoyed") = 0x23FBB0F9 (registry record @0x25C5154: name ptr + crc32 at +0x28);
+  DecoyParams ctor @0x18070E0, id 0x16AD245D, size 0x6C. Statechart/trigger registration at 0x167F580.
+
+**2. THE SPAWN-CALL BUG, ROOT-CAUSED AND FIXED (the reason every SpawnTest returned 0):**
+- FUN_005FD730 is **__thiscall**: ECX = the spawn MANAGER, stack arg = a POINTER to a template key struct
+  (the "hash" values we logged, e.g. 0x479DB35C, are HEAP POINTERS to key structs, not hashes!).
+- Our helper passed garbage ECX (stdcall) + later a stale key -> FUN_005fac60 walked a garbage manager ->
+  not-found -> 0. Every spawn attempt so far was structurally wrong (both this session and earlier eras' "hash" interpretation).
+- FUN_005fac60 (slot getter) walks the manager: array at [mgr+0x94], count u16 at [mgr+0x9a], entries = 8 bytes
+  {e0=object/?, e4=key-ish}; compares via FUN_00656110 against key+0x1C. Not-found returns mgr+0x80 (empty slot).
+- NEW BUILD (compiled, ready to deploy): SpawnWatch now captures the manager (ECX) AND the key pointer of the
+  game's own live spawn calls; SpawnTest v2 replays FUN_005FD730(mgr, key) with those exact live args via
+  __thiscall. The failures should turn into the game's own behavior with the game's own args.
+
+**3. Battery results (deployed build):** 6x SpawnTest ret=0 (explained by #2); NavTest 6 re-arms all "no mover"
+  (the health-anchor candidate chain resolves GUARDS - stationary! movers need a different candidate source).
+
+**4. Refined clone-renderer insight:** the game's visible runtime spawns (pistols/muskets etc., BhvTools
+  Instantiate*) clone REGISTERED TEMPLATE entities from manager slots - not live objects. The crowd streamer
+  uses the same shape (template -> vt+0xC clone -> FUN_00526590 activate -> FUN_00a2e820 flush). Our invisible
+  clones cloned LIVE bodies. The corrected next target: clone a TEMPLATE object (the manager+key capture in
+  build #2 finds the live manager by construction).
+
+**NEXT WINDOW (one deploy away):** close game -> deploy latest build -> walk (SpawnWatch captures live
+mgr+key) -> SpawnTest=true -> replay. If ret != 0: the node is MOVED to the player + logged (the test does
+it automatically). This is now a structurally correct call.
+
+**CORRECTION to #1:** the SP build DOES have an ability system (3799 "Ability*" symbols, e.g. AbilitySetClip)
+- but the DECOY family specifically is absent: 0x `AbilityDecoy` and 0x `DecoyNpc*` symbols in the PS3 SP
+map (the MP exe has both). The closure stands: SP cannot spawn the decoy NPC; it has only CLDecoyed+DecoyParams.
+
+### 2026-10-08 (31) � WINDOW BUILD (ready, not deployed): spawn replay + nav direct scan
+Single build contains BOTH fixes (compiled 18:07, `build-x86`):
+1. **SpawnTest v2 (structurally correct)**: SpawnWatch captures the manager (ECX) + key pointer of the
+   game's OWN live FUN_005FD730 calls; SpawnTest replays FUN_005FD730(mgr, key) as __thiscall with the
+   captured args. Every previous attempt passed garbage ECX / stale keys - all spawn ret=0s explained.
+2. **NavTest direct scan**: the candidate scan now matches the CSrvNavigation vtable (0x26F4B70) directly
+   - finds ALL navigating NPCs including walking civilians (the health-anchor chain only found guards,
+   which stand still, so the moving-NPC hijack test never actually sampled a mover). Collects up to
+   4096 nav instances, keeps 16 within 60 m, samples twice, picks the fastest; fires NavigateTo(player)
+   with the existing command-hold.
+TEST RECIPE (next window, ~2 min): close game -> copy the asi -> launch -> in-world ->
+  a) wait ~30 s (SpawnWatch needs live calls; it logs "mgr=0x.. key=0x..") ->
+  b) SpawnTest=true  -> read the log: "REPLAY mgr=.. key=.. ret=.." (ret!=0 = the engine spawned;
+     the node is auto-moved 2.5 m east + the user watches)
+  c) NavTest=true    -> read "chosen MOVING nav=.. spd=.."; if a mover is found the NPC may walk over.
+
+### 2026-10-08 (32) � live mover-check (read-only, pre-deploy validation)
+- Direct scan for CSrvNavigation instances (vt 0x26F4B70) in 0x2E0-0x560: only 44 instances, 37 within 60 m
+  of the player (docks area) - and ZERO movers across two samples. NPCNavigation (vt 0x268AFA8) = also 44
+  (likely the same NPCs' pattern objects). CONCLUSION: the current spot is a quiet area (few NPCs, all
+  stationary) - the walk-hijack test needs the player in a busy street; otherwise "no mover" is expected.
+  The deployed build's nav log (d= distances) will show this per session.
+- Window summary 17:59-18:08: decoy closed (SP lacks the decoy-NPC family; MP-only), spawn-call root cause
+  + replay build, nav direct-scan build, TEST-CHECKLIST.txt written. Both new experiments are one deploy away.
+
+### 2026-10-08 (33) � window continued (18:08-18:13): manager family, factory decode, deploy package
+- Strong manager family located (high-heap 0xFE5D7xxx-0xFE5DAxxx, counts 159-201, entries {e0=obj, e4=key
+  struct ptr}): the top manager's class = vt 0x1E5F808 (id 0x406089A4); key structs carry {vt, flags
+  0x10000000, id fields, +0x1C ptr}. Not conclusively the crowd catalog - the ECX-capture build resolves
+  the real manager by construction (game's own ECX).
+- **GRAPHIC FACTORY DECODED** (the clone-visibility wall's door): FUN_0085F9C0(definition) = create the
+  graphic instance for a definition object: kinds via FUN_00a1d0d0 (definition type hash switch:
+  0x66f41a81/0x212dd44a/0x536e963b/0x6e877b3a/0x7d324092 use [def+0x10]; 0x59c7cc7f uses [def+0x20]),
+  then FUN_00927CB0 -> kind 0-7 -> per-kind 0x20-byte alloc + ctor (FUN_0085BF50/0x85A3B0/...).
+  Wrapper FUN_00900260(def). => A cloned node gets graphics by running the factory per part-definition
+  and attaching. Signature + routing documented for the next phase.
+- Deploy package: tools\deploy-next-window.ps1 (backup + deploy + ini preset for the test window).
+
+### 2026-10-08 (34) � factory attach chain (window close-out)
+- Graphic creation dispatch: a kind-switch dispatcher at 0x91F6xx routes type cases to create-variants
+  FUN_0084A040/050/060/080/0F0 (each takes the definition; allocator/device global = [0x4DD0210];
+  result stored into the caller's output slot, e.g. [esi] = the part's graphic field). FUN_0084A050's
+  caller case: ecx=def -> call -> store. The chain: dispatcher -> FUN_0084A0x0(def) -> FUN_00900260(def)
+  -> FUN_0085F9C0(def) -> kind-routed 0x20-byte ctor. No direct callers of the wrapper (callback-table
+  dispatched, table refs only via relocations). ATTACH RECIPE (for the parked graphic/outfit phase):
+  per part definition: graphic = variantFactory(def); store into the part's graphic slot (the dispatcher
+  pattern shows the slot is the caller's output dword). Concrete next step for making clones visible.
+
+### 2026-10-08 (35) � WINDOW HEADLINE: the deep copy = node clone + STATE BLOCK (why clones were invisible)
+- Decoded FUN_00503600 end-to-end: FUN_00503600(this=SOURCE, arg1, arg2) = allocate via desc 0x275AFD0
+  + FUN_0052A980(SOURCE, new, arg2) [the node clone we called before] + THE STATE COPY of
+  0x100..0x148 (four xmmwords + byte) + child-container re-init +0x140 (FUN_00616640/FUN_004F9870).
+- => Our clone calls (vt+0xC = FUN_0052A980 node-only) skipped the state block AND the container
+  re-init. The crowd streamer clones templates through the deep-copy family ("template->vt+0xC =
+  node-copy FUN_00503600-family") and those RENDER. This is the best-evidenced fix for clone
+  visibility so far.
+- Build 7EDF5037 (18:13, deployed=NO): contains THREE corrected experiments:
+  A) CloneLive v6: deep_copy(source,0,0) PRIMARY (+ move/activate/flush; async fallback).
+  B) SpawnTest v2: replay the game's own live (manager=ECX, key) args via __thiscall.
+  C) NavTest v2: direct CSrvNavigation-vtable scan (walking civilians, not guards only).
+- Deploy: tools\deploy-next-window.ps1 (game closed); TEST-CHECKLIST.txt updated (A/B/C order).
+- Window accounting: 17:59-18:14 spent on: decoy closure, spawn-call root-cause+fix, nav-scan fix,
+  deep-copy decode+fix, graphics-factory chain decode. Everything deploy-ready; the remaining
+  window time is deploy-only (requires the game closed by the user).
+
+### 2026-10-08 (36) � v7 build: the engine's OWN sync clone as primary (3B713A6D)
+- FUN_006deff0 disasm (its call site to the deep copy): FUN_00503600(source, NEW, arg2) where NEW was
+  allocated by FUN_006deff0 itself via desc [0x2799098]. FUN_00503600 with null first arg allocates
+  internally via desc [0x275AFD0] - valid, but the engine's own sequence uses the [0x2799098] desc.
+- => v7 CloneLive: SYNCCLONE first (FUN_006deff0(source,0,0) = the engine's complete clone entry incl.
+  setup post), then DEEPCOPY (FUN_00503600(source,0,0)), then the async path. All share place_clone
+  (move 2.5 m east + activate FUN_00526590 + flush FUN_00a2e820 + field logs + 10 s recheck).
+- FINAL BUILD: 3B713A6D9B34E3257495FBD88DF6A3FD (18:20). Contains, all SEH-guarded, game-thread:
+  A) CloneLive v7 (sync clone -> deep copy -> async), B) SpawnTest v2 (live mgr+key replay),
+  C) NavTest v2 (direct nav scan). Deploy: tools\deploy-next-window.ps1.
+
+### 2026-10-08 (37) - Skyrim Together repo study + LIVE tests A/B/C on build 3B713A6D
+- Studied github.com/tiltedphoques/TiltedEvolution (Skyrim Together Reborn). Full findings:
+  bf-coop\logs\ai\SKYRIM-TOGETHER-LESSONS.md. Key: they spawn the partner via the ENGINE'S OWN spawn
+  function (Actor::Create + ModManager::Spawn/SpawnNewREFR) and NEVER memory-copy a live entity; gate all
+  setup on materialization (WaitingFor3D: poll GetNiNode); drive per-tick (ForcePosition/SetRotation +
+  interpolation); transport animation as per-class animation-graph VARIABLES (descriptor tables + word-index
+  guard; wrong-class writes = the exact Havok crash family as our node+0xE8 anim crash).
+- LIVE tests (user in-game, busy street, 103 streamer spawn captures this session; build 3B713A6D):
+  B) SpawnTest v2 replay (mgr=0x43359930 key=0x3937DAAC captured 18:59:00) -> call entered the real
+     function (SpawnWatch logged our own call) -> ret=0x0. Stale-key hypothesis: capture the key's CONTENTS
+     (and all args + caller RVA), not just the pointer.
+  A) CloneLive v7: player's own body = all 3 rungs fail (SEH). 32 candidates scanned; try#0-8: SYNCCLONE
+     rc=1, DEEPCOPY rc=1, ASYNC AV (0xC0000005); try#9 SYNCCLONE rc=0 -> object 0x45220110, vt=0x1E64680
+     (WorldEntityGroup), placed + persisted (still alive 105 s later). Live memory dump vs source body vs
+     player: node fields copied (position, marker 0x04DD5F8C, self-link +098, own children array), but
+     graphic/scene link slots +0xAC/+0xB0/+0xD4 = 0x0, controller +0xE8 = 0x0, +0x50 = static default
+     definition -> INVISIBLE SHELL, not a body. VERDICT (live-proven): no memory-copy route yields a rendered
+     Entity; renderable bodies must come from the engine's spawn/streamer pipeline (as ST does).
+  C) NavTest v2: scan/pick/command path work; the "MOVING" filter misreads a garbage speed field (picked
+     navs at 211 m/s); attempts alternate rc=3 (idle state gate) -> rc=0 (accept, no movement) on a
+     stationary instance. Needs position-delta mover detection.
+- Config restored after tests: CloneLive/SpawnTest/NavTest=false; SpawnWatch/NavWatch=true.
+- Next build list: SpawnTest v3 (key content snapshot), materialization logging (graphic slots), nav fix.
+
+### 2026-10-08 (38) - SpawnTest v3: capture the spawn TEMPLATE (build 2E92C596)
+- Root-caused the ret=0: FUN_005FD730's manager is a TRANSIENT pass object - its slot table
+  (mgr+0x94 / u16 count at mgr+0x9a) and the mode global [0x2AC1E68] die with the spawn pass
+  (live-read 19:07: all captured managers +0x94=0, count=0; mode ptr NULL). A stale replay can
+  never work -> the replay must clone the captured TEMPLATE directly.
+- Fully decoded the engine spawn recipe: FUN_005fac60(mgr,key) = walk the mgr's pass table, find
+  the slot whose value at +4 is IN the key's id-array (ptr at key+0x1C, u16 count at key+0x22;
+  live sample had 17 ids), slot[0]=P (validity P[+8] must be negative), P[0]=Q=the TEMPLATE
+  object; the spawn = [[Q]+0xC](Q,0,0) + activate FUN_00526590 + flush FUN_00a2e820. So the
+  engine's own spawn IS an object clone - but of the TEMPLATE class, not of a live body.
+- v3 (build 2E92C596, 19:09:07): SpawnWatch v3 captures per live call: key id-array, first slot
+  match (FUN_00656110 replication), P validity, Q / Q-vt / clone-fn, caller RVA; prefers an
+  Entity-class (vt 0x1E4CE90) template. SpawnTest v3: stale-replay + lookup diagnostics, then
+  CLONE the captured template directly (engine slow path) + activate + flush + move 2.5 m east
+  + materialization watch at 1s/4s/10s with the graphics/controller slots (fAC/fB0/fD4/fE8).
+- Deploy pending (game running at build time); TEST-CHECKLIST.txt updated with the new procedure.
+
+### 2026-10-08 (39) - SpawnWatch capture bug root-caused + v3.1 (build BD947E10)
+- The v3 capture never matched because it walked ONLY the mgr+0x94 table - but the streamer
+  managers' tables are EMPTY (n=0, live-read). FUN_005fac60's FALLBACK path (slot at mgr+0x80)
+  is what these calls actually use. Live-read of 24 burst managers: every fallback record holds
+  P[+8]=0x80000001 (valid), Q = a PERSISTENT Entity-class template (vt 0x1E4CE90), cloneFn =
+  0x0052A980 (the node clone), static archetype def at Q+0x50 (two distinct defs seen:
+  0x1ED82078 / 0x1CD82078), position in +0x40.., P<->Q backlink (P[0]=Q, Q[+0xC8]=P).
+  Templates read fine MINUTES after the pass -> they persist; the capture can fire any time.
+- Note: the templates themselves have fAC/fB0/fD4 = 0 (no graphic links) - same as our invisible
+  clone. So graphics are attached AFTER the spawn call (the caller's follow-up). The caller RVA
+  (now logged) identifies that code = the next lever.
+- v3.1 (BD947E1024C1C3D1ECDBED26BC736175, 19:14): capture mirrors FUN_005fac60 exactly (table
+  match OR fallback), logs the first 12 calls in full (caller RVA, tab/n, fb, q/vt/fn/matches),
+  keeps the best body-class capture (g_spawn_v3) + last-call record (g_spawn_v3_last). Test
+  unchanged (clone template -> activate -> flush -> move -> 1s/4s/10s materialization watch).
+- Deploy pending (game running); checklist updated.
+
+### 2026-10-08 (40) - LIVE SpawnTest v3 run: capture works; clone faulted; v3.2 adds fault pinpoint
+- v3.1 capture (build BD947E10) WORKED live: 18 "call#" lines, every call fb=1 found=1, arr_cnt=17,
+  tab=0x0 n=0 (fallback path), pv=0x80000001, caller=+0x202CE0 (the streaming caller), templates =
+  Entity (vt 0x1E4CE90 fn 0x52A980) AND EntityGroup (vt 0x1E4A128 fn 0x503600) - both engine paths.
+- SpawnTest v3 fired (19:17:47): TEMPLATE q=0x46AA53D0 (Entity, ch=1, f50=0x1ED82078 static
+  archetype, kids=1 x class 0x1E4C9F8); stale replay ret=0; lookup rc=0 slot=mgr+0x80 (fallback
+  confirmed); CLONE rc=1 = SEH fault in FUN_0052A980 on the template (worked on live bodies v4/v5).
+- Live diagnostics: all descs valid ([0x275E670]=0x2760EF0, [0x275AFD0]=0x275CD28,
+  [0x2799098]=0x279A3E8); jobenq 0x639360 NOT patched (normal code); mode ptr null post-pass;
+  template record healthy (P valid, Q[+0xC8]=P, children ok).
+- v3.2 (578CA55DC9DB418C4BB8A6BE72B06D82, 19:19): template_clone_helper now records the SEH code
+  + faulting instruction address (logged as "CLONE rc=.. seh=0x.. at+0x.."); capture + TEMPLATE
+  logs now include the mode byte (*[0x2AC1E68] at call time) = fast/lookup vs slow/clone per call.
+  Deploy on next close; re-run: walk for a capture, SpawnTest=true, read the fault address.
+
+### 2026-10-08 (41) - BREAKTHROUGH: the in-hook spawn WORKS (v4, build C304FAFE)
+- Root-caused the cold-call fault (seh=0xC0000005 at+0xD1539): an 8-byte-entry container GROWTH
+  copy inside the job/queue family - a context problem, not the object. The engine only ever runs
+  the clone path ON THE STREAMING THREAD inside a pass; cold calls from the camera/main thread
+  fault there.
+- v4 = run the spawn INSIDE the live spawn hook (streaming thread, in-pass): re-invoke
+  FUN_005FD730(mgr,key) with the call's own args, capture the return, move 2.5 m east, watch.
+- LIVE RESULT (19:26:47, Havana load): triggered on call#1 (mgr=0x39DA11A0 key=0x39DF0C9C,
+  caller=+0x2060F3, EntityGroup template vt 0x1E4A128 fn 0x503600 deep copy) ->
+  "LIVESPAWN rc=0 obj=0x489C4070 seh=0x0" = THE ENGINE'S OWN CALL SUCCEEDED.
+  obj: vt=0x1E4A128 (EntityGroup) ch=19 f50=0x1CD0207C.
+  Materialization: @1s fD4=0xFC7A6E94 (stream link) + fE8=0x471FD3E0 (controller) appeared,
+  f50 -> 0x1CD8207C (def swap); stable @4s/@10s. NOTE: cold clones never got these links.
+  Children = a composite (controller, 0x26xxxx behavior-class objs, stream handles) - an
+  engine-built live entity group.
+- Miss: it was placed at (2.5,0) - fired during the load before g_last_pos was valid. The
+  test is RE-ARMED for the next burst (fires 2.5 m east of the player's live position).
+- Also confirmed: mode=0 on every streaming call (the load pass IS the clone path); templates
+  come in both Entity (fn 0x52A980) and EntityGroup (fn 0x503600) flavours; caller +0x202CE0
+  (streaming loop) and +0x2060F3 (a second spawner).
+
+### 2026-10-08 (42) - *** BREAKTHROUGH: THE EDWARD CLONE (v6) ***
+- v6 "Edward substitution": point the streamer record (mgr+0x80 -> P) at the LIVE PLAYER BODY for
+  one invocation, run the engine's own slow path ourselves (SEH-guarded), restore the record
+  immediately (the engine's own call then sees the original Q again). Our call's return = the
+  engine-made clone of a FULL CHARACTER.
+- LIVE (19:38:38, build 40571E0B): SUBSTITUTE P=0x46388768 Q=0x443AB790 -> Edward 0x3B47F320 (ch=32)
+  -> EDWARD CLONE rc=0 obj=0x48A3D200 seh=0x0 (restore=0) -> ch=32 f7c=-0.50.
+  Materialization: @1s fD4=0xFC8B166C (stream link) + fE8=0x494EEE00 (controller) + f50=0x5FDA027C
+  (= Edward's own definition) appeared; stable @4s/@10s. Deferred placement -> (106.3,-73.8) =
+  2.5 m east of the player.
+- CONTROLLER CHECK: clone fE8 vt = 0x026FA898 = *** BhvAssassin *** - the assassin behavior class!
+  (crowd NPCs = BhvGenericNPC 0x26E34D8). Clone alive + stationary with the assassin controller.
+- VISUAL = the open question (fAC/fB0 still 0 at 10s; the user was asked to look east).
+- Repeatable: flip SpawnTest off/on + fast travel (fires during the destination load; defers
+  placement until the position is known).
+- Builds tonight: v3 BD947E10 -> v3.2 578CA55D -> v4 C304FAFE (in-hook spawn works) -> v5 851509FD
+  (body-only + deferred placement) -> v6 40571E0B (Edward substitution). ALL verified live.
+
+### 2026-10-08 (43) - late arc: v8/v9, the render wall, and the spawn-trace results
+- v8 (C17AD011): record child counts captured: records run ch=1..19 (Entity + EntityGroup),
+  callers +0x202CE0 (streaming loop) and +0x2060F3 (second spawner); ch>=16 records exist
+  (EntityGroup ch=19 via +0x2060F3). Trigger fires -> spawn_live_do -> clone gets fD4/fE8 only.
+- THE RENDER WALL (evidence): runtime-created objects (records, groups, EDWARD clones, record
+  clones) NEVER receive the graphics slots fAC/fB0; every VISIBLE body has them (fAC~0xFC7x/0xFCBF,
+  fB0~0x38A2) + the shared world link (+0x5C/+0xC0=0x38B10260) + +0xD0=1. Pointer-wiring ALL of
+  those onto clones -> still invisible (user-verified). Citizens CHURN (a "citizen" source was
+  recycled within minutes - do not wire from stale reads).
+- The engine's own load spawn (trace at 19:59:03): spawnApi arg=0x362A1D8C (one key) x102 calls
+  from BOTH callers; created ch=1..19 objects (Entity/EntityGroup, f7c varying) = the RECORD
+  population - NOT the citizens. Records do not grow (checked 1 min later). Deep copies
+  (FUN_00503600) run from both callers at load (sources = EntityGroup records).
+- v9 (6D3D4000): clone_test_thread repurposed = pure trace arming (2s -> g_spawn_capture); old
+  census/route-B/keyed experiments removed. Probes (node-ctor 0x52A4A0, alloc 0xA38120 filtered to
+  4 ctors, copy 0x503600, spawnapi 0x5FD730, spawnret 0x602CE0) log callers during the window.
+  Deployed + ran: the trace showed the record+deep-copy flows but NOT the citizen creation
+  (citizen ctor is elsewhere / outside the window).
+- CONCLUSION for the next session: the rendered characters come from an untraced creation path.
+  Next: broaden the alloc probe to log ALL descriptor allocations + callers during a load ONCE,
+  grep for the Entity-class (desc from [0x275E670]) creations whose results have fAC/fB0 set;
+  that caller chain = the citizen builder -> replicate for the partner. Alternative (works today):
+  hijack a rendered body (ghost route).
+
+### 2026-10-08 (44) - the decisive render-provenance result
+- The engine's own load-created records MATURE: eng4..eng10 (created 19:59:03 via the spawn API)
+  showed fAC=0xFCA4A2xx + fB0=0x390C/0x43BA + the world link +0x5C=0x38FFE070 by 20:01 - i.e.
+  stream-owned objects DO get graphics slots, minutes after creation.
+- BUT: moving eng4 (a ship-rigging object, originally at z=23.8) -> the engine SNAPPED IT BACK
+  (114.4,-62.5,23.8) within seconds. Stream-owned NON-character objects = transform-managed (moves
+  do not stick).
+- Contrast: streamed CHARACTER bodies DO accept transform writes (that is why the ghost drive
+  works - user-verified earlier). So: visible+drivable = hijack a character body; runtime-created
+  characters = never drawn (all pointer-wiring exhausted + user-verified invisible).
+- => The remaining untraced piece = the creation path that yields STREAM-OWNED CHARACTER bodies
+  (the citizens). The trace harness is deployed (v9, CloneTest arms it); next: broaden the alloc
+  probe to log ALL descriptor allocations + callers during one load, find the Entity/character
+  creations whose results carry fAC/fB0, and replicate that call chain.
+
+### 2026-10-08 (45) - NIGHT FINALE: the 1772-key entity creation + the registry signature fix
+- v12 trace (build 09A39098): the world load = **1772 Entity mass-creates** (classId 0x984415E)
+  with REAL 32-bit world-hash keys + block indices (1,2,6,7,8,9,A,B,C,D,E) - e.g.
+  (0xA534890C,0), (0x532E4E53,A), (0x81540F2D,7), (0x14E01872,8), (0x4C8...)... => **the game's own
+  character/world-entity creation recipe = MassCreate(Entity, worldHash, block)**.
+- FUN_00a1f160 (find-by-key) and FUN_00a201a0 (find-or-create) decoded from disasm: **THISCALL with
+  the REGISTRY in ECX** (mass-create = 4 stack args + ret 0x10; find = 2 stack args + ret 8; the
+  world's callers pass the registry in ECX - captured live in the masscreate probe as r.ecx).
+  => ALL earlier "spawn by key" attempts (the old EntitySpawn v3 etc.) passed NO ECX = wrong
+  registry = the documented "empty/unregistered body" failures. FIXED in v14 (registry_find2 /
+  spawn_keyed2 helpers + g_last_registry captured from the probe).
+- v14 (0D0D560324262338F0B8D63A170A7688) DEPLOYED: the clone_test_thread experiment now:
+  1) fetches the first body-like entity (f7c=-0.5, ch>=16) among the captured keys via the
+     CORRECT registry call -> moves it to player+2.5m east (~3 s of writes) -> "LOOK 2.5 m EAST";
+  2) creates+fetches (key+1) as the neighbor-spawn probe -> moves to player-2.5m west -> "LOOK".
+- LAUNCHER HICCUP at the end: after ~20 kill/deploy/relaunch cycles tonight, Ubisoft Connect got
+  stuck (windowless hung starts; a killed session blocks the next immediate launch). NOT code.
+  Next clean launch (wait a few minutes for Uplay, or launch from the user side) runs the v14 test.
+- Builds tonight: BD947E10 -> 578CA55D -> C304FAFE -> 851509FD -> 40571E0B -> C17AD011 -> 6D3D4000
+  -> A8AD43EC -> 09A39098 -> DF0A4A86 (entctor hook reverted: hung init once, later verified safe)
+  -> F26C04CE -> 0D0D5603 (v14, deployed).
+
+### 2026-10-08 (46) - v15/v16/v16.1: spawn test closed; Edward graphics attempt result
+- v15: the corrected create (fake key 0x7A3C9E01,7) DOES create a registered entity (0x48B142C0,
+  vt 0x1E4CE90) - but it is an EMPTY SHELL: ch=0, f50=0x1ED02078 (default), all links 0; unchanged
+  at +30 s. The old register recipe (FUN_0051d290) faults (rc=1). => entity CONTENT comes from the
+  world data by key; fake keys never fill = cannot render. Pure spawn = closed with evidence.
+- 1772 Entity mass-creates at load = the world's own data-backed creation (blocks 1..F keys).
+  Guards = these records materialized + filled by the stream; new guards appear when new blocks
+  stream (new keys -> new shells -> filled). Adoption loophole (pre-create at an unloaded block's
+  key, reload) = untested idea.
+- v16/v16.1: Edward clone (v6 recipe) re-ran clean (obj ch=32, f50 0x5FDA027C after the fill,
+  +BhvAssassin +stream link). Graphics attach attempt (decoded recipe: variantFactory(def) ->
+  store into +0xAC/+0xB0): v16 ran pre-fill with the static default def (0x1FD2027C) -> 0;
+  v16.1 deferred to +4 s (correct def 0x5FDA027C) -> STILL 0. The factory (FUN_0084A050,
+  thiscall(def)) returns nothing - the real invocation shape (callback-table dispatched) is still
+  unknown. fAC/fB0 stay 0. => The Edward clone exists as data but remains unrenderable for now.
+- Builds: v15 E1B8BEA0 -> v16 C8194DD6 -> v16.1 25EBF660 (deployed). MODLOG/RE-NOTES current.
+
+### 2026-10-08 (47) - THE GRAPHICS BINDER: cracked to its real layer
+- The variant "factories" are NO-ARG THUNKS (mov ecx,0x27E1CF0; jmp wrapper). The dispatcher
+  case (0x91F68A) shows the REAL call shape: **push def (cdecl, on the stack); call thunk;
+  store eax into the slot**. My earlier calls passed the def in ECX and nothing on the stack ->
+  the function read stack garbage -> always 0. THAT was the bug.
+- With the corrected shape (v16.2/16.3, call sites 0x91F694 & 0x92E38A as reference):
+  * REAL graphics created: part defs -> non-zero results (first success!)
+  * v16.5 run: body def -> graphic 0x576AE490 (vt 0x259504C) bound into fAC/fB0; part[53] ->
+    0x37DB14E0. Slots held at @10s.
+  * STILL INVISIBLE: the factory product = a DEFINITION-level graphic object; real bodies carry
+    per-INSTANCE scene/stream objects in fAC (stream-region 0xFC.. pointers) created by the
+    stream/scene system. The clone never gets those (no stream record; no controller/stream links
+    either - fD4/fE8 stayed 0).
+- Also: the trigger's source guard (v16.5) works but the finder offered a ch=54/f7c=0 non-body
+  entity that passed the part-def check (the entity at 0x3B115A40) -> cloned that instead of Edward.
+  The finder/source selection needs refinement (require f7c=-0.5 && ch 16-40 && part defs).
+- VERDICT: the graphics binder chain is fully understood up to the definition level. The last layer
+  = per-instance scene registration (flag-routed creators 0x84A0F0-family / the 0xE0-size allocator
+  wrappers 0x901700/0x901790) + stream ownership. That is a deep engine project with unbounded risk;
+  NOT a one-more-cycle fix. Practical Edward = forge def-swap look on a driven body (proven path).
+- Build v16.5 = 7F4A3245143159F2C69736051A73478D (deployed). Builds reviewed: 25EBF660 (v16.1),
+  3DF5A007 (v16.3), 3B676323 (v16.4), 7F4A3245 (v16.5).
+
+### 2026-10-08 (48) - v17 MATURATION TEST: the fill is world-membership-gated (definitive)
+- Experiment: create an Entity at a fake key (0x7A3C9E01,7) via the corrected mass-create, register
+  it (FUN_0051d290), then poll its slots every 15 s for 5 minutes.
+- RESULT: 20/20 polls identical: ch=0 f50=0x1ED02078 (default) +0x5C=0 fAC=0 fB0=0 fD4=0 fE8=0.
+  The shell is NEVER touched. Meanwhile the engine's own mass-created entities gain
+  +0x5C=world-mgr + fAC(stream ptr) + fB0(instance) ~2 minutes after creation.
+- => The world/scene fill pass walks only the world's own (data-backed) entity population; no
+  registry-created or faked entity ever enters it. Combined with (47): the renderer layer is
+  bounded by world membership end-to-end.
+- Remaining concrete lead for a future session: find the FILL PASS itself - the code that writes
+  the world-manager pointer into entity+0x5C ~2 min after load (a distinctive store of a global
+  value to +0x5C on many entities). Static hunt + call it manually on the clone, or find the list
+  it iterates and add the clone to it.
+- Tooling state (all working, deployed): v14 registry fix (find/create thiscall), graphics factory
+  call shape cracked (def on stack, cdecl; thunks), Edward clone pipeline (v6 recipe), part/body
+  slot writes. The ONLY missing link = the fill pass entry. Build v17 = 4A854B443D1FF9B8A1CDB350FE140354.
+- Ini left at CloneTest=false / SpawnTest=false / watches on (clean preset for a fresh session).
+
+### 2026-10-08 (49) - THE FILL HUNT (deep road, session 1)
+- Whole-.text scan for fill fingerprints (stores to +0x5C/+0x58 near +0xAC/+0xB0): 50 clusters.
+  Inspection: they are CONSTRUCTORS/inits (node ctor 0x52A4A0 zeroing 0x50..0xD4; a 0x1E4E2DC-class
+  ctor; reset paths; a marker-init at +0xD8=0x04DD5F8C). Not the fill.
+- Decoded the JOB CALLBACK chain (the "late" work at ~2 min = the job queue draining):
+  * FUN_005034B0 (deep-copy callback): chains into FUN_00527270, then copies the matrix into the
+    state block 0x100..0x140 and iterates the +0x140 children via the FS-TLS context + [0x4DDF92C].
+  * FUN_00527270 (node-clone callback): calls FUN_006470D0 (copy/transform), FUN_005130E0
+    (swap the +0xC8 pointer with a freshly allocated REFCOUNTED handle from the 0x4DD5FA0 pool),
+    FUN_005134F0 (per-class fixup: switches on [handle+0xC] class hashes 0x4DE70D45/4DE70D1C/
+    4DE70D46/0x520FF28F/0x4DE71615/0xF9A83FD0 + [handle+0x10] type 0xB, masks bits in the +0x40 row).
+- KEY FINDING: entity+0xC8 = a REFCOUNTED RECORD HANDLE (class hash + type at +0xC/+0x10) = the
+  entity's world-record identity. The graphics/scene attach is apparently RECORD/STREAM-keyed, not
+  in the callback chain.
+- The v16.5 clone was freed by the engine within ~15 min (unregistered objects don't persist).
+- NEXT EXPERIMENTS (candidates):
+  A. THE RECORD-HANDLE SHARING TEST: clone a body, then copy a REAL body's +0xC8 handle into the
+     clone (refcounted - increment the refcount!) - if the record-driven passes attach to "the
+     entity of record X", the clone may receive the same treatment (graphics/scene).
+  B. TRACE THE HANDLE CREATION: hook the 0x4DD5FA0-pool allocator / FUN_005130E0 callers to see
+     WHERE real entities get their records (vs clones) - the record's creation flow may include the
+     missing attach.
+
+### 2026-10-08 (50) - Experiment A (record-handle share): NEGATIVE, clean
+- v18.2 (B8D36E7A): plain record clone (0x46EA6AD0, ch=1 stub) + HShare: found a RENDERED citizen
+  (0x3837FEC0, fAC set), took its +0xC8 record handle (0x30009D0C), incremented the refcount
+  (28 -> 29) and wrote it into the clone. Watches at 4/10/30/60 s: clone UNCHANGED (ch=1, no
+  fAC/fB0/fD4/fE8). => the record layer does NOT drive entity visuals. Falsified cleanly.
+- Remaining definitive tool for the fill hunt: a software watchpoint - patch an INT3 over the store
+  instruction candidates or use a write-watch on a REAL entity's fAC slot at maturity time, with a
+  VEH handler in the plugin logging the writer's PC/registers. That answers "who writes fAC/fB0"
+  once and for all. Queued as the next session's opener (needs a small plugin add: VEH +
+  INT3 probes + auto re-arm).
+- Builds tonight final: v18.1 B477F55E, v18.2 B8D36E7A (deployed).
+
+### 2026-10-09 (51) - Adoption attempt, the resident-entities discovery, and the v19.1 fix
+- v19 (73810D5A): world-key recorder (per load burst, RAM) + plant at the last completed burst's keys + shell watcher + LOAD HIT detector + 0-60s field watches. The user fast-traveled Tulum -> Havana; both regions' keys recorded (Tulum set = 1787).
+- Plant run (in Havana, 23:20): 32 shells "placed" - but the log shows most returned ALREADY FILLED (ch 1..9, +0x5C=0x388AD0C0 world-mgr, real-ish f50, fB0 set): the world keeps its entity records RESIDENT in memory even after leaving a region. find-or-create FOUND the world's own entities; only ~3 slots were genuinely empty.
+- Return travel Havana->Tulum WEDGED: "loading" screen 8+ min, game alive (render + hook ticking), ZERO LOAD HITs (the creation pass never touched our 32 keys before the hang). Killed. Cause unknown - could be unrelated, could be one of the 3 fresh shells (no evidence either way).
+- STRUCTURAL FINDING: world entities are not destroyed on region unload within a session - they stay resident (world link kept; fAC/fB0 cleared out of region). The "fill" is a streaming act for resident regions. Hence: (a) every placement into a "fresh" region actually found existing records; (b) adoption can only be tested ACROSS a process restart (fresh session = truly empty slots for unvisited regions).
+- v19.1 (1B45F963): all keys dumped to plugins\AC.BlackFlag.PatchFix.keys.txt (survives restarts); plant targets ONLY slots with no current entity (per-key registry find check) = genuinely fresh; plant waits for registry + valid world pos; watcher/LOAD HIT/deliver unchanged. Game closed at ~23:54 with the user in Tulum; keys file = 4644 lines (both regions recorded). FINAL STEP STAGED: launch with AdoptTest=true -> plant at boot -> one fast-travel -> the first VALID adoption test.
+
+### 2026-10-09 - HEADLESS ATK PIPELINE: FULL EXTRACTION + BYTE-PERFECT ROUNDTRIP (AC4)
+- Built `bf-coop/tools/atkbf` (.NET 9 console, references ATK 1.3.6 AnvilToolkit.dll) - headless ATK for AC4 Black Flag.
+- Fixes needed to run ATK solo (all found in decompiled source, see D:\ac4work\atk-decomp):
+  * cwd must be the ATK folder (Libs/*.dll loads are relative),
+  * DataStorage.GlobalScimitarClassReader = new ScimitarClassReader() (MainWindow ctor normally does this; without it every nested read NREs),
+  * DataStorage.ActiveGame = Game.BlackFlag + GameFileList.CheckStrings() + download Lists/BlackFlag.gfl (84k entries) or FileReference XML export dies on a WPF dialog,
+  * HashedData.CheckStrings(), DirectXTexPath, TempPath, invariant culture.
+- Proven headlessly on AC4 (game data, not Rogue):
+  * `atkbf dump (<file>.raw) (<out>.xml) --game BlackFlag` -> XML for: EntityBuilder (Edward default, 20 KB), Material (11 KB), Skeleton (162 KB), BuildTable.
+  * `atkbf compile <xml> <bin> --game BlackFlag` -> binary; **roundtrip byte-identical** (1552/1552 bytes, 0 diffs) for CHR_P_EdwardKenway_Default.
+  * File references resolve to REAL PATHS via BlackFlag.gfl, e.g. `DataPC_CaribbeanSea\Leather Armor Parts\CHR_P_EdwardKenway_Leather_Set.3608045168`.
+- Extraction chain (Python, proven): forge.py reads AC4 v27 forges identical to Rogue; anvil.py decodes .data containers (LZO); extract_resource.py pulls individual resources; edw bundle = 758 resources incl. CHR_P_BaseEntity_Male (Entity class 0x0984415E, no ATK XML support), visual masters (BuildTable), FX, ragdoll, sounds, nav.
+- Key insight for the partner problem: EntityBuilder/BuildTable/Skeleton/Material are all XML-editable + recompilable; these are the character-definition tables. Next: repack containers (DataFile.Serialize) + forge, then study CharacterDefinition/spawn tables to make a data-backed Edward.
+- REA/Ghidra note: function query failed with Java heap OOM (default headless maxmem 2G) - bump GHIDRA_HEADLESS_MAXMEM (e.g. 8G) and retry.
+
+### 2026-10-09 (52) - v19.1 adoption test EXECUTED: first LOAD HIT + first world-links, then crash (dump archived)
+- Plant at boot (10:50:57): 29 shells created (fresh-key scan over first ~861 file lines, stride 9). User in Tulum 10:52-11:28; resident Tulum load did NOT touch shells (no calls made for existing keys).
+- FAST TRAVEL Tulum -> Havana: **LOAD HIT shell[3] key=(0x15C05910,0x7) at 11:28:35** - first ever; the Havana load's find-or-create reached a planted key.
+- **World-link writes at 11:28:48.058**: shells 9-13 (0x30601EF0..0x30602330) got +0x5C=0x4626FD00 (this session's world-mgr) - first time planted shells got a world link -> the REGION load does adopt pre-placed shells (unlike the boot loader, which skips existing keys). No fAC/fB0/fD4/fE8, no RENDERED/delivered/freed.
+- **CRASH ~0.5 s later**: AV 0xC0000005 at AC4BFSP.exe+0x4C10BA (VA 0x8C10BA) = FUN_008c10b0+0xA `movzx edx,[edi+0x26]`, edi=NULL. Chain: FUN_008af3e0 -> FUN_008ad750 (GraphicWorld::Entity::Components) -> FUN_008c11d0 -> FUN_008c10b0 (list append). Root: FUN_005200c0(PTR_PTR_027da8d0) returned NULL (registrar lookup unchecked). Crash entity = 0x44B2B650 (heap, NOT a shell); main-thread load-completion job chain (0xF1DE71 callback; frames FUN_00925xxx / FUN_00a326d0 / FUN_00a1daa0 / FUN_00816560). Shell17 ptr found as stale value on that stack (inconclusive). Dump: %LOCALAPPDATA%\CrashDumps\AC4BFSP.exe.25324.dmp (98 MB); decode tools: bf-coop\tools\analyze_crash_dump.py, dumpwalk.py.
+- VERDICT: adoption path is ALIVE (region load touches planted keys; boot loader skips). Crash attribution OPEN (shell-destabilized load vs game fast-travel/job flakiness). NEXT: (1) repeat run for reproducibility; (2) if it crashes again -> control run with AdoptTest=false; (3) write-watch build (VEH) to ID the +0x5C writer.
+
+### 2026-10-09 (53) - CRASHES ROOT-CAUSED: our act-ctl rescan froze the game ~3.2 s mid-travel -> v19.2 disables rescans
+- Run 2 (11:48:55 plant, 29 fresh shells): same travel; LOAD HIT shell[3] again (11:50:36); crash 11:50:45 in nvwgf2um.dll+0xCB0E47 - the KNOWN recurring driver crash (see (15)). Dump: all 29 shell pointers appear ONLY in the plugin's own array; no shell memory in the crash path. Shell[3]'s block was already recycled before the load (11:50:32, raw heap values).
+- SMOKING GUN: both run-1 and run-2 logs show an IDENTICAL ~3.1-3.2 s zero-line gap immediately before the crash (run1 11:28:40.847->44.036; run2 11:50:41.624->44.756). Duration matches find_player_ctl's documented "~3 s per pass" byte-wise walk (0x30000000-0x54000000, then 0x10000-0x7FFF0000). Mechanism: during fast travel the cached player node dies -> refresh_act_ctl fires a rescan on the game thread mid-load -> multi-second submission stall -> crash (game-code null deref in run 1, driver AV in run 2). The shells are NOT the crash cause.
+- FIX v19.2 (MD5 17C0CA1831D3C813E1FE37A54E3DD622): new [PlayerTransform] ActScan (default false) gates rescans; when enabled the scan logs "ActScan: took N ms found=" for attribution; stale ctl/node are cleared when scanning is off. Rebuilt (cmake --build build-x86 --config Release), deployed via deploy-next-window.ps1 (NOTE: must run as `powershell -NoProfile -ExecutionPolicy Bypass -File ...` - a plain & call fails on this box).
+- NEXT: rerun the same travel on v19.2 - expect no ~3.2 s stall, no crash; if it still crashes with NO stall -> investigate non-stall causes and consider the no-shell control run.
+
+### 2026-10-09 (54) - RUN 3 (v19.2, scans off): freeze GONE, same game-code crash at +0x4C10BA -> shells/plant now prime suspect; control run staged
+- v19.2 deployed (MD5 17C0CA1831D3C813E1FE37A54E3DD622), ActScan=false verified (0 ActCtl/ActScan lines). Plant re-ran (29 shells, 11:58:46). Travel Tulum->Havana: NO multi-second gap anywhere (max 1.1 s at boot) - the act-rescan stall fix works.
+- Crash at 12:17:03: AC4BFSP.exe+0x4C10BA (VA 0x8C10BA), same as run 1: FUN_008c10b0+0xA `movzx edx,[edi+0x26]`, edi=NULL; byte-identical chain/args to run 1 (FUN_008af3e0 -> FUN_008ad750 -> FUN_008c11d0 -> FUN_008c10b0; frame2 args C086DF29/3F800000; frame1 arg2 0x1090DB28). Crash 13.2 s after LOAD HIT (run 1: 13.6 s) - same load-end phase, right after the "dumped 35 keys" burst (same last line as run 1). Only shell[3]'s key touched (LOAD HIT; its block already recycled). Dump AC4BFSP.exe.13860.dmp: shells appear only in the plugin's array; shell[17] again sits as stack residue at 0x0C57FC1C (same slot as run 1 - plugin tick residue, not causal).
+- CONCLUSION: run 2's driver crash was stall-induced (fixed), but runs 1/3's game-code crash is a SEPARATE deterministic event at the end of the Havana travel load. Correlation: 3/3 shell-planted travels crashed; v19's shell-free Havana arrival (10/8) succeeded.
+- NEXT: control run, AdoptTest=false (plugin on, NO shells) - if the travel completes, the shells/plant are implicated; if it still crashes at +0x4C10BA, go plugin-off (asi renamed) next to separate plugin from game.
+
+### 2026-10-09 (56) - v19.3 knobs built; E1 crash was a HAVANA-SAVE load (29 shells); E2 sniper (1 shell) SURVIVED - crash scales with shell count
+- v19.3 built+deployed (MD5 D5DAF4ABB47428F3491EDB992421958F): new [Coop] knobs AdoptOnly (plant only this key), AdoptSkip (never this key), AdoptMax (cap count); plant log prints only/skip. (Also learned: the user's save is now a HAVANA save - the control run's arrival autosaved there; "continue" loads into the Havana area directly.)
+- E1 crash reinterpreted: 29 shells, Havana-side load (menu -> (0,0,0) -> crash +4.5 s, no Tulum stage). So the +0x4C10BA crash hits Havana-side loads with many shells, both save-loads and travel-loads.
+- E2 (sniper): AdoptOnly=15C05910:7 -> exactly 1 shell. Havana save-load sequence SURVIVED; player walking in Havana 2+ min (no crash, no freeze, no LOAD HIT - the save-load path does not call find-or-create for the key; the travel-streaming path does). The shell block WAS written during the load: w5C=0x1E43694 fAC=fB0=0x273F09FC fD4=0x1B0496A5 f50=0x0; live-read vt=0x01E5EE48 (adopt-vs-reuse still ambiguous).
+- PATTERN: crash scales with planted-shell count (0 and 1 OK, 29 crash). NEXT: round-trip travel test in the LIVE session (Havana->Tulum, then Tulum->Havana) with the 1 shell - the return is the exact streaming load that crashed with 29 shells; watch for LOAD HIT + adoption on the single shell.
+
+### 2026-10-09 (57) - ROUND TRIP SURVIVED with 1 shell; LOAD HIT x2 (both legs); the load processes our key but the block ends up repurposed
+- User did Havana->Tulum->Havana (12:42:03-12:42:32): all loads completed, game stable. **LOAD HIT shell[0] key=(0x15C05910,0x7) at 12:42:02 (Havana-exit leg) and 12:42:18 (Tulum-exit leg)** - the destination loads asked for our key on BOTH legs (the key is in both regions' sets).
+- Shell block writes during the legs (12:42:09: f50=0x40004 w5C=0xA000A fAC=0xFC6C36B0 fE8=0xFC6C00A0 ch=64620; 12:42:25: f50=0x32010A fB0=0x32028A). LIVE READ (12:43, game alive): the block now holds NON-ENTITY structured data - repeating records tagged 0x02000401 with hash-like ids and fields 0x000A0000/0x0032000A, plus a tail list of (0xFC7A7xxx arena ptr, 0x00070007) pairs. So: the load found/processed our key, but the block is repurposed data (not a clean adopted entity). NOTE: 0xFC6C/0xFC7A/0xFC7D arena = same family as the crash-context 'this' pointers (0xFC739B30/0xFC7D9B64).
+- CONFIRMED: crash scales with planted count (29 -> crash; 1 -> survives; 0 -> survives). NEXT: ramp at AdoptMax=8 (same flow: continue + round trip); if OK keep raising, if crash bisect down.
+
+### 2026-10-09 (58) - 8-shell run SURVIVED; shell[4] ADOPTED (dock piece); teleport + graft experiments; scene identified
+- AdoptMax=8 run (plant 12:48:19): LOAD HITs x8 across loads (shell[3] x4 + shells 4-7 on the last leg); round trip survived, no crash/freeze.
+- **shell[4] (0x3370DDA0, key 0xF1EF333E:7) got ADOPTED**: def 0x1ED82058, ch=1, f7c=-1.0, w5C=0x46AA5370 (world link that toggles with region load/unload), real transform at +0x40, registration at +0xC8 (replaced the "unset" static marker 0x04DD5F8C). It is a member of the DOCK-STRUCTURE family (same def as planks/pilings at the player's feet) - a structural type: fAC/fB0=0 -> invisible by design.
+- Teleport test: external write of +0x40 to the player - accepted, STUCK (entity not transform-driven); user confirms nothing visible (structural). fB0 graft (sibling's transform-cache pointer) - accepted, logged, no crash, no visual change. fAC graft not fired.
+- Scene scan: 2,161 Entity-class objects in heap, 1,684 WITH visuals. The big object next to the player = the dock-worker NPC (ch=18, f7c=-0.5, full graphics; visible in user screenshot); the ch=32 entity at 0.0m = likely Edward's own body.
+
+### 2026-10-09 (59) - KEY-FINDING BREAKTHROUGH: entities carry world keys; first AIMED plant (visible-prop key)
+- Entity structures carry world-key pairs that match our recorded keys file. SHALLOW offsets (+0x0C..+0x5C) = the entity's OWN key; DEEP offsets (+0x14C..+0x584) = referenced/spawner keys. Calibrated on the adopted shell (own key) and the dock worker (deep key (0xB9F6CBD7,7)).
+- Scanned the 37 visual entities within 30m: 33 carry keys. Clean shallow-key props (f7c=0.0, ch=3-4, fAC set) e.g. 0x44F3B620 (pos 114.4,-76.2,5.0) key=(0x2821090F,0xB).
+- AIMING without rebuild: prepend 3 lines to keys.txt (plant scan reads every 3rd line) -> target becomes candidate[0]; AdoptOnly selects it. (1st attempt failed: guard skipped because the key already existed deeper in the file; fixed with unconditional prepend.)
+- SNIPER PLANTED: shell[0] 0x2B3DCC10 key=(0x2821090F,0xB) - key of the visible 3-component prop. Session pid 22296. PENDING: load Havana save -> watch LOAD HIT + visual fill (fAC) on our shell -> if OK, first adopted VISIBLE object; next aim at character keys (dock worker (0xB9F6CBD7,7)).
+
+### 2026-10-09 (55) - CONTROL RUN (AdoptTest=false): travel SURVIVED -> planted shells implicated
+- Session pid 22992 (launched 12:21:49; AdoptTest=false VERIFIED: no plant markers, no LOAD HIT, no shells). Save loaded to Tulum (179.2,56.8,0.3) at 12:22:17; fast travel started ~12:22:19 (loading pose 6.3,-15.5,-13.0 at 12:22:21-23); arrived 12:22:31.9; settled (102.4,-73.8,2.3) at 12:22:36; NO crash, NO freeze; stable 6+ min (log to 12:29+). No new dumps, no new app errors.
+- Contrast: 3/3 travels WITH shells crashed (runs 1-3: two identical game-code crashes at AC4BFSP.exe+0x4C10BA, one stall/driver crash); the shell-free travel completed cleanly. => the planted shells trigger the game-code crash at the END of the destination load.
+- NEXT: E1 = re-enable plant (AdoptTest=true), rerun the travel to confirm the crash returns. E2 = build with new ini switch [Coop] AdoptSkip="LLLLLLLL:HHHHHHHH" to SKIP the one key the destination load always requests (0x15C05910,0x7): if the crash is that single interaction, a 28-shell plant should survive.
+
+### 2026-10-09 (60) - SHELL ROUTE CLOSED; keyed dock characters found; **mod9 forge build (Edward) BUILT + DEPLOYED** + big-scope directive
+
+- **Shell/adopt route FALSIFIED conclusively:** the sniper shell at the visible-prop key (0x2821090F,0xB) got NO LOAD HIT across a save load + round trip — the engine only find-or-creates keys that are MISSING at load time (a live shell makes the load skip the key entirely). Earlier "adoptions" = heap block reuse (shell[4] ended up serving a different key). Also: crash scales with plant count (29 -> deterministic load-end crash at +0x4C10BA; <=8 -> survive) = planted shells destabilize the load-end job chain. Route closed; do not re-plant. (ini now AdoptTest=false.)
+- **World-key registry walk decoded:** scan memory for the entity's 8-byte (keyLo,keyHi) pair; registry entry base = pair_addr-0xC = {ptr, rc, flags(0x8000000x), keyLo, keyHi}, stride 0x14 (found near 0x3808D3xx/0x3809DExx). Entity (vt 0x01E4CE90) fields: +0x40 pos, +0x50 (def-slot; for CHARACTERS/player this points into code/module range — NOT a plain def; runtime def-chain for chars unresolved), +0x5C world link, +0x66 ch, +0x7C f7c (-0.5 = body), +0xAC fAC, +0xC8 registration (carries keys), +0xE8 controller.
+- **KEYED PERSISTENT characters found (the partner frame):** key=(0xF00056E0,0) -> entity 0x45B497A0 @ (111,-66); key=(0xF000570A,0) -> entity 0x460F4610 @ (109,-73) (Havana docks). ch=21, f7c=-0.5, controller +0xE8, shared world-link 0x45C914A0; rebuilt every load = persistent BY DESIGN. Player's own body: 0x4414E6A0 (ch=32).
+- **USER DIRECTIVE:** treat as a big AC4 Black Flag addition — co-op on the level of Skyrim Together; write freely ("if we can write, we write"), no tiptoeing. (Standing: SP/offline, own game, no rehosting game files.)
+- **mod9 BUILT (forge def-redirect, data-side, on top of mod7):** source = `CHR_P_EdwardKenway_Walpole` (Edward in the Walpole-disguise robes; hash32 0x3652BE80, 369189 B, 2 internal identity occurrences @0x43a/0x175c) -> for each target: private EOF copy + identity dwords patched to the target hash + TOC offset/size repointed. Targets = `CHR_C_M_Spanish_Medium`, `CHR_C_M_Spanish_Poors`, `CHR_C_M_Spanish_Rich` (Havana street/dock folk). File: **D:\bf4_mod\DataPC_extra_chr_mod9.forge** (1532058490 B). VERIFY pass green (all three -> copy@EOF size 369189). Script: bf-coop\tools\make_mod9.py.
+- **DEPLOYED:** game closed (killed pid 22296), game `DataPC_extra_chr.forge` <- mod9, MD5 src==dst = C641619371A42C160E69C391C7F7E82F; ini AdoptTest=false for a clean visual test. Relaunch at 13:23: one phantom post-kill ntdll crash appeared (pid 9944, ntdll+0x50862 — SAME family as 10:47/10:50/12:31 events = the known kill->relaunch launcher hiccup, NOT our code) -> then clean session pid 11796; plugin journal init_complete; key recorder live.
+- **Fallbacks on disk:** mod8 (same targets, Duncan source), mod7 (previous live), pristine original — all in D:\bf4_mod. Instant swap if the Edward variant misbehaves.
+- **NEXT:** user loads Havana -> check the docks: dock/street folk should render as Edward (Walpole robes + Edward head/face). Then: DRIVE one keyed character via the proven engine setter FUN_0063c2d0 (alignas(16) matrix + dummy 2nd stack arg, `ret 8`) and wire it into the net relay. (The old live f50-probe idea for the dock worker is superseded.)
+
+## 2026-10-09 - FIRST CONFIRMED DEF-SWAP RENDER: world NPC as exact Edward
+- mod12 (pristine + 4 probes: CHR_C_F_Poor<-Duncan, CHR_C_F_Rich<-EdwardStd, CHR_G_Spanish_Soldier<-EdwardStd, CHR_C_M_Slaves<-EdwardStd): FIRST successful render of a swapped look on a non-player character. User: "exactly like my edward, outfit and face and all", walks normally (hands behind back), "not a single other edward" after searching.
+- The rendered NPC: entity 0x47F2BE30, key F00030AE; member of the keyed dock-worker gang (co-keyed F0003090/307B/3E42, dock key block F0002xxx-F0003xxx). Signature: ch=29 cnt=32 (player ch=32 cnt=34; normal NPCs cnt 17-23). Full-world census at the time: exactly 2 bodies with cnt>=26 = player + him.
+- Render count = 1 despite def-level swap -> his source def has ~1 instance in the loaded world (rare/unique-use class) or other instances unloaded.
+- f50 (+0x50) on characters = pointer into module code (x86 bytes) = current-behavior tick; changes with state (0x5FCA227C -> 0x5FDA227C -> 0x5F8A2264). NOT a class/def id. entity->def mapping still unsolved (inline hash scan 0x800B: 0 hits; 3-hop pointer chase 400 blocks: 0 hits).
+- ATK cannot parse these defs: "ScimitarClass Failed=True, not XML-supported" -> offline XML route dead; engine is the only reader.
+- hash32s (extra_chr): EdwardStd 0x9A958CF0 | Duncan 0x51BAB7D4 | F_Poor 0xC1BB9618 | F_Rich 0x64D5F55C | Soldier 0x12CECF74 | Slaves 0xB3DE056C | M_Spanish_Medium 0x12CECF30 | Generic_Sailors 0x8FB6DABC | Jackdaw_Sailors 0xE78D9C36 | Player_Default 0xC0A3FCE0.
+- mod13 DEPLOYED (isolation build, one variable vs mod12): CHR_C_M_Slaves target now carries Duncan content. Decode when user finds the walker: robed/vanished => def pinned = CHR_C_M_Slaves; unchanged => def in {CHR_C_F_Rich, CHR_G_Spanish_Soldier} -> one more single-change test (mod14).
+- Tools added (bf-coop/tools): dump_f50.py, dump_fac.py, dump_ent.py, dump_ent2.py, lookup_hash.py; scene_scan.py updated (full-char filter + cnt>=26 body census).
+- mod13 result (user): the walker was STILL EDWARD -> CHR_C_M_Slaves eliminated (and F_Poor was already out via the Duncan look). Remaining candidates: CHR_C_F_Rich | CHR_G_Spanish_Soldier.
+- mod14 DEPLOYED (one variable vs mod13): CHR_C_F_Rich target now carries Duncan content; only CHR_G_Spanish_Soldier keeps EdwardStd content. Decode: walker turns robed/vanishes => pinned = CHR_C_F_Rich; walker unchanged (Edward) => pinned = CHR_G_Spanish_Soldier.
+- Walker continuity across loads: new entity address/key per load (mod13 session: 0x44CCFCE0, key F0002094, at (32.0,-92.8)); invariant signature = ch=29 cnt=32.
+- mod14 result: after F_Rich->Duncan, NO Edward-shaped (ch29/cnt32) body exists anywhere in the loaded world across repeated full sweeps; user searched: "perhaps he's plain gone". USER CLUE: the walker "walked like a woman" (female anim set) -> CHR_C_F_Rich (F_Poor excluded: he was Edward in mod12/13 while F_Poor wore Duncan; Slaves/Soldier excluded by mod13). CONCLUSION: walker def = CHR_C_F_Rich.
+- 2821090F clarified: NOT a character - it is the key of a visible 3-component prop at (114.4,-76.2) from the closed sniper-shell experiment; AdoptOnly=2821090F:B is a leftover, not a targeting lever. AdoptTest stays false.
+- mod15 (THE KEEPER) DEPLOYED: pristine world + ONE swap only (CHR_C_F_Rich <- EdwardStd content, id-patched). If the walker returns as Edward -> final partner-look build / F_Rich confirmed. If he appears as a normal soldier -> he was the soldier def (then one more single-swap build).
+- tp tool ready: tools/tp_entity.py (burst-writes feet +0x40 to target xyz; entity found by ch29/cnt32 scan).
+- mod15 KEEPER LIVE RESULT: the walker came back as Edward - and there are FOUR Edward-bodied NPCs in the world (ch29/cnt32 x4, not one): the F_Rich class has >=4 members. User found 2 at the harbour; memory census found 4 (0.7m/14m/31m/46m from the player). DEF CONFIRMED = CHR_C_F_Rich (the "walks like a woman" female anim set now explained).
+- TELEPORT WORKS: tools/tp_multi.py held 3 of them at the player's position for 40s (burst-writes feet +0x40, 1197 writes). All four Edwards delivered around the player. Write path = proven again on crowd/keyed bodies.
+- mod15 = final look build if confirmed: pristine world + ONLY CHR_C_F_Rich <- EdwardStd content.
+## 2026-10-09 (evening) - CO-OP PIPELINE LIVE END-TO-END + nav/anim dig opened
+- THE FULL DRIVE PIPELINE RAN LIVE, AUTOMATIC: fake remote (UDP) -> handshake -> live position stream -> targeted body pick (children>=24; the four Edwards have 29) -> despawn-pin armed automatically (private vt 0x48AF0000) -> per-frame drive to the peer position (err=0.00m). No external scripts. Verified: playerTransform body=1@39CED530 (Edward, ch29/cnt32) driven at the player's side.
+- CRASH FIX LIVE: the body-pick scan (0x30000000-0x50000000 sweep) got SEH guards in ghost_body.cpp (scan inner loop + valid_body) - survived the full pick+drive cycle. (The 15:24 crash = an unprotected sweep read during a racing page decommit; hook died permanently.)
+- HAND SHAKE SAGA SOLVED (two causes): (1) the old port pair 27973/27974 was jinxed by stale socket state from crashed sessions - fresh ports work; (2) startup binds race with Ubisoft overlay process spawns that inherit the plugin's UDP socket. WORKING RITUAL: live-rebind the plugin's port (edit ini LocalPort/RemotePort; the ini watcher reconfigures live) + connect the fake/real peer right after. Also: multiple overlapping fake-peer processes silently fail to bind - check Get-NetUDPEndpoint before blaming the net.
+- NAV WALL UNDERSTOOD (deep dive tonight): FUN_01785ed0 = NavigateTo; it validates the target, runs the vtable+A8/BC "can-navigate" precheck, clears a flag at nav+0x23/0x20, ENQUEUES the target (FUN_0061f180 = pos-target / FUN_00624410 = with-ctx; these are the watch hook sites (abs 0x61F180/0x624410)), then calls vtable+0xE0(speed,0) as activation. rc=0 = fully accepted - but the NPC never moves => the actual walking is done by the BEHAVIOR system consuming the nav queue, not by NavigateTo. Nav and animation = the same subsystem (the crowd behavior).
+- NavTest live: fires (template=1 validate=1, rc=0 x6 reissues), chosen nav 0x39024510, ent=(29.3,-165.7,4.2) frozen => confirmed no consumption. Note: speed readout still garbage (240 m/s) - the mover-detection field needs a fix.
+- NEXT DIG (nav+anim): anchor the crowd behavior (BhvGenericNPC) at RUNTIME via the ghost's controller (entity+0xE8; the plugin already logs ActCtl for the player); find what consumes nav targets + starts movement + plays the walk anim; then a "walk request" write; then wire: nav-walk when far / raw-drive when close. Static anchors: BhvAssassin strings in part_00158/00160 region; gamedb index at bf4_re\sp_src\.gamedb\index.sqlite (schema: files/functions/strings/symbols/edges; function names carry absolute addresses; file_id+shifted names e.g. file_id 202 = part_00200.c).
+- Tools added: sprint_drive.py/sprint_drive2.py (multi-entity sprint + yaw basis writes - rotation math copied from ghost_body.cpp: for dir (dx,dy) row0=[dy,-dx,0,0] row1=[dx,dy,0,0]), tp_multi.py, follow_drive2.py, test_hello.py, probe_welcome.py, listen27973.py/listen_reuse.py, gamedb_probe.py/gamedb_nav.py/gamedb_find.py/gamedb_bhv.py/gamedb_str.py, scan via scan_compact.py.
+## 2026-10-09 (late) - nav/anim dig night 1: the mechanism is found
+- Player vs crowd behavior classes: player ctl/behavior vt = 0x026FA898, crowd = 0x026E34D8 (all Edwards + crowd NPCs; the pinned ghost keeps a private copy 0x48AF0000). 18 vtable slots differ (the class-specific methods; both sides interesting: +0xB0 = player FUN_0076c900 vs crowd FUN_0076bf10 - same 0x76xxxx subsystem).
+- The behavior/ctl object = a CHILD COMPONENT of the entity (entity+0x60 list, +0x66 count; the Edward had 29 children; the crowd behavior = child[28] = the +0xE8 ctl object; +0x00 vt, +0x08 = owner entity backref).
+- The action/anim update = FUN_01ac1ad0 (part_00235.c:17331+): reads REQUEST slots on the behavior (in_ECX+0x2F50, +0x2F54, +0x2F58, +0x2F64 ...) and, when != -1, applies them over LIVE fields on a second object (iVar6: +0x8D4 blend, +0x8D8, +0x8DC, +0x8E0 phase, +0x8E4/+0x8E5 bytes) -> that pair (request -> live) IS the animation control surface. Writers of +0x2F50: part_00235.c:35058/35066 (the request setters).
+- Component resolver FUN_013aec10 = walking the entity+0x60 list (cursor in the passed ctx).
+- NEXT (live experiment queue): (1) identify the crowd behavior's own update (the FUN_01ac1ad0 analog; find its slot in the 0x026E34D8 vtable via the player-side slot index once the player behavior object is located live); (2) find the walk-state request values (what the AI writes at +0x2F50.. to make an NPC walk); (3) live write-test: request a walk state on a free Edward + watch the anim fields + position; (4) nav tie-in: why the enqueued nav target isn't consumed.
+- Live inspector tools: inspect_live.py (Edwards+ctl), inspect2.py (player ctl + vt diff), vt_dump.py, vt_slot.py, read_slots.py, children_dump.py, gamedb_*.py (index queries).
+
+## 2026-10-09 (late night) - CRASH POST-MORTEM: raw +0x8D0 writes are dead; engine request channel only from here
+- WHAT HAPPENED: two direct-write probes (tools/anim_write_test.py, then tools/anim_act_test.py - 24B rows at beh+0x8D0, 20Hz, one Edward + two live crowd NPCs, user mid-play) AV'd the game ~1s into the second run. Dump AC4BFSP.exe.16084.dmp: exception 0xc0000005 READ of 0x7B; fault RVA 0x3437A9 `mov eax,[edx+8]`, edx = *(this+0x2C) = 0x73 - a small integer consumed as a pointer. The row we were writing had 0x00000073 at +0x0C of the payload: exact match. Full analysis: bf-coop/crash_dump_analysis.txt. Chain (gamedb): per-entity child update FUN_00513360 -> child vt+0x94 -> FUN_00625D70 -> FUN_00750440 -> FUN_007437A0 (refcounted state-object swap; virtual calls +0x130/+0x300). The corrupted slot maps to an embedded controller subobject around beh+0x8B0 whose +0x2C (absolute beh+0x8DC) is the 'current state object' pointer the tick swaps - our payload put 0x73 there and the next tick dereferenced it.
+- RE-INTERPRETATION: the beh+0x8D0 region is heterogeneous per object (floats 1.0/0.6 on one, heap pointers on another, u16 'families' on a third) - the small-sample 'state family' story is suspect and direct replay is banned forever. Also observed: during the final live seconds the three write targets drifted 0.7-2.4m - could be corruption side-effects; unverifiable (crash), not claimable.
+- WHY: +0x8D0 is NOT a uniform state table across objects. Pre-write live rows: floats (1.5708=pi/2, 0.4, 1.0), pointer table (0x04DD5F8C, 0x01E546E8), Edward = mixed; even a single object transiently holds pointer fragments during stream-in/out (visible in the state_map capture t=10.4). Writing small values over pointer slots -> engine deref'd 0x73. The night-1 note ("Edwards' +0x8D0 = pointer tables, not scalars") is confirmed the hard way.
+- STATE: saves backed up (bf-coop/saves_backup_20261009, 54 files); forge md5 75C44733769120EB97326F592C7E0F25 and asi md5 F8CED2592721CA6269E8C5A1FA397289 both unchanged; game relaunched clean (pid 10884, in-world, plugin live, NavTest/NavWatch off).
+- GUARDRAILS: anim_write_test.py + anim_act_test.py marked DO-NOT-RUN. EXTERNAL memory writes on live objects: banned. All state changes only in-plugin, only via the engine's own request path.
+- NEXT (safe plan): (1) hook the applier FUN_01ac1ad0 + setter FUN_01ad9190; drive the ghost's anim via the request slots (behavior+0x2F50..+0x2F64, -1 = leave untouched) so the engine validates its own inputs; (2) read-only: find the walk-state writer on a moving NPC; (3) mirror player anim -> request slots -> ghost; live test only after (1).
+
+## 2026-10-09 (evening, post-crash) - v21 read-only anim observers: player vocabulary captured; crowd class divergence; walk-state regions + the state machine found
+- v21 observers DEPLOYED (asi md5 CC6815DFBAF6CFED66B0E95194933649): AnimApply probe @ FUN_01ac1ad0 (RVA 0x16C1AD0) + AnimWrite probe @ FUN_01ab52c0 (RVA 0x16B52C0); read-only, capped logs, heartbeat every 4096 calls; zero writes this session.
+- PLAYER VOCABULARY (user parkour run ~17:24-17:26): idle c=0x3F d=0x2A (pulsing on/off); run/free-run a=0x48 e=1 with c settling 0x57; climb/descent d=0x83 then d=0x07; one c=0xB0 blip. Writer param map confirmed per-event: a->+0x8D4 (blend), c->+0x8D8 (hang), b->+0x8DC, d->+0x8E0 (phase), e->+0x8E4, f->+0x8E5.
+- REQUEST SLOTS stayed all -1 for the whole session => normal locomotion does NOT use the request path; the live 6-tuple write is the authoritative surface.
+- CLASS DIVERGENCE (explains the crash; kills the naive value-copy mirror): player ctl (vt 0x026FA898) +0x8D0 region = scalar anim fields; crowd/Edward ctl (vt 0x026E34D8) +0x8D0 region = pointer tables + scalar mix (live dumps: heap pointers, 0xAAAAAAAA fill, u16 ID families). The ghost is a crowd body: drive must go through ITS OWN machine.
+- WALK-STATE HUNT (read-only): full-tree diff, walk 16s vs stand 10s on a walking crowd NPC: 349 offsets changed walking / 0 standing. Candidates: ctl+0x26E0..+0x26EA (u8 counters/bits), ctl+0x28F0..+0x28FA (16-bit-ish accumulators, ~0x1E step), ent+0x74..+0x76 (float bytes), ent+0xB4 (~+6/step), ent+0xB8, ent+0x10..+0x26 (matrix rows), ent+0x38..+0x3A.
+- CAVEAT: a short recheck (1.5s x 5 subjects) saw no changes in the ctl counters - the regions appear tied to actively-walking subjects; watch_states.py is ready for a verified live walker (children list + ctl regions + ent).
+- STATIC (gamedb, part_00093.c): ctl+0x26E0 and +0x28F0 are the far side of double-buffer SWAPs in FUN_00d7e290 (swap +0xEC4<->+0x26E0, +0xE34<->+0x28F0, +0x16D4<->+0x26D8) => staging<->live state commit pattern.
+- THE STATE MACHINE (crash chain decoded): FUN_00513360 -> child vt+0x94 -> FUN_00625D70 -> FUN_00750440 -> FUN_007437A0 = REFCOUNTED STATE-OBJECT SWAP: *(controller+0x2C) = new refcounted object (FUN_00a0bde0 alloc; LOCK refcount inc/dec; virtuals +0x130 old / +0x300 new). The controller is the embedded subobject around beh+0x8B0; +0x2C = abs beh+0x8DC = the exact field the raw write clobbered (0x73 -> deref 0x7B). The crowd behavior/anim state lives on this machine.
+- NEXT (safe plan): (1) read-only hooks on the swap chain + the +0x26E0/+0x28F0 staging writers while a verified NPC walks; identify idle/walk/run state objects and who stages them; (2) design the drive through the engine's own state path (never raw +0x8D0); (3) keep the raw-write ban (RCA: crash_dump_analysis.txt).
+- Tools added: parse_animlog.py, walk_tree_diff.py, crowd_counter_check.py, edw_tree_watch.py, watch_states.py, vt_diff.py, resolve_diff.py, ctl_layout_check.py, gamedb_*.py helpers.

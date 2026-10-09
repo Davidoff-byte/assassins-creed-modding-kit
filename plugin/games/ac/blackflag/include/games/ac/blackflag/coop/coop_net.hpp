@@ -31,7 +31,7 @@ struct RemotePlayer {
     float         qz = 0.0F;
     float         qw = 1.0F;
     std::uint32_t tick_ms = 0;
-    std::uint32_t anim_state = 0; // packed phase<<16 | flags<<8 | hang (B4)
+    std::uint32_t anim_state = 0; // packed blend<<24 | phase<<16 | flags(3)<<8 | hang (B4/P3)
 };
 
 // C1 session state: host/join handshake result.
